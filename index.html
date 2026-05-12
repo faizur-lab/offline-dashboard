@@ -310,9 +310,12 @@ document.dispatchEvent(new Event('firebaseReady'));
     <div class="topbar-dot"></div>
     <span class="topbar-title">Campaign Dashboard</span>
   </div>
-  <div class="topbar-right">
-    <span class="topbar-date-label">Date</span>
-    <input type="date" id="reportDate" />
+  <div class="topbar-right" style="gap:8px">
+    <span class="topbar-date-label">From</span>
+    <input type="date" id="dateFrom" />
+    <span class="topbar-date-label">To</span>
+    <input type="date" id="dateTo" />
+    <button onclick="resetToToday()" style="font-family:inherit;font-size:11px;padding:4px 10px;border-radius:5px;background:#222;border:1px solid #444;color:#aaa;cursor:pointer">Today</button>
   </div>
 </div>
 
@@ -401,6 +404,21 @@ document.dispatchEvent(new Event('firebaseReady'));
 
   <!-- TREND VIEW -->
   <div id="view-trend" class="view">
+
+    <!-- Trend filters -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:1.5rem;display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap">
+      <div>
+        <p style="font-size:10px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">From</p>
+        <input type="date" id="trendFrom" style="font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fafafa" />
+      </div>
+      <div>
+        <p style="font-size:10px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">To</p>
+        <input type="date" id="trendTo" style="font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fafafa" />
+      </div>
+      <button onclick="applyTrendFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 16px;border-radius:6px;background:var(--black);color:#fff;border:none;cursor:pointer">Apply</button>
+      <button onclick="resetTrendFilters()" style="font-family:inherit;font-size:12px;padding:6px 12px;border-radius:6px;background:#f0f0f0;color:#555;border:1px solid var(--border);cursor:pointer">Reset</button>
+    </div>
+
     <div class="section-wrap">
       <p class="section-label">CPL Trend</p>
       <div class="chart-card">
@@ -409,8 +427,14 @@ document.dispatchEvent(new Event('firebaseReady'));
           <div class="legend" id="trendLegend"></div>
         </div>
         <div style="position:relative;height:260px"><canvas id="trendChart"></canvas></div>
+        <!-- Product filter for CPL chart -->
+        <div style="padding:10px 4px 2px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.07em">Products:</span>
+          <div id="cplProductFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
       </div>
     </div>
+
     <div class="section-wrap">
       <p class="section-label">Leads Trend</p>
       <div class="chart-card">
@@ -419,6 +443,11 @@ document.dispatchEvent(new Event('firebaseReady'));
           <div class="legend" id="leadsLegend"></div>
         </div>
         <div style="position:relative;height:230px"><canvas id="leadsChart"></canvas></div>
+        <!-- Product filter for Leads chart -->
+        <div style="padding:10px 4px 2px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;font-weight:600;color:var(--soft);text-transform:uppercase;letter-spacing:.07em">Products:</span>
+          <div id="leadsProductFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -512,11 +541,50 @@ function startListeners() {
 
 const fmt    = v => Math.round(Number(v)).toLocaleString('en-IN');
 const cpl    = (s, l) => l > 0 ? Math.round(s / l) : 0;
-const getDay = () => document.getElementById('reportDate').value;
-const todayRec = () => history.find(h => h.date === getDay()) || null;
+// ── DATE RANGE HELPERS ──
+const today = () => new Date().toISOString().slice(0, 10);
+const getFrom = () => document.getElementById('dateFrom')?.value || today();
+const getTo   = () => document.getElementById('dateTo')?.value   || today();
+
+// Records within the selected daily-view range that have actual saved data
+function selectedRecords() {
+  const f = getFrom(), t = getTo();
+  return history.filter(h => h.date >= f && h.date <= t);
+}
+
+// Single-date shorthand for input form (always uses dateTo as the active entry date)
+const getDay    = () => getTo();
+const todayRec  = () => history.find(h => h.date === getDay()) || null;
+
+function resetToToday() {
+  const t = today();
+  document.getElementById('dateFrom').value = t;
+  document.getElementById('dateTo').value   = t;
+  render();
+}
+
+// ── TREND FILTER STATE ──
+let trendSelectedCpl   = PRODUCTS.map((_, i) => i); // all selected by default
+let trendSelectedLeads = PRODUCTS.map((_, i) => i);
+
+function applyTrendFilters() { buildTrend(); }
+function resetTrendFilters() {
+  const allDates = history.filter(h => {
+    return h.data.some(d => d.leads > 0 || d.spent > 0);
+  });
+  if (allDates.length) {
+    document.getElementById('trendFrom').value = allDates[0].date;
+    document.getElementById('trendTo').value   = allDates[allDates.length - 1].date;
+  }
+  trendSelectedCpl   = PRODUCTS.map((_, i) => i);
+  trendSelectedLeads = PRODUCTS.map((_, i) => i);
+  buildTrend();
+}
 
 function dailySums() {
-  return history.reduce((acc, day) => {
+  // Only sum days that have actual data (leads or spend > 0 for at least one product)
+  const daysWithData = history.filter(h => h.data.some(d => d.leads > 0 || d.spent > 0));
+  return daysWithData.reduce((acc, day) => {
     acc.leads += day.data.reduce((a, d) => a + d.leads, 0);
     acc.spend += day.data.reduce((a, d) => a + d.spent, 0);
     return acc;
@@ -525,21 +593,26 @@ function dailySums() {
 
 /* ── SUMMARY ── */
 function buildSummary() {
-  const td   = todayRec();
-  const totS = td ? td.data.reduce((a, d) => a + d.spent, 0) : 0;
-  const totL = td ? td.data.reduce((a, d) => a + d.leads, 0) : 0;
-  const avgC = cpl(totS, totL);
-  const alerts = td ? td.data.filter((d, i) => cpl(d.spent, d.leads) > PRODUCTS[i].targetCpl && d.leads > 0).length : 0;
+  const recs  = selectedRecords();
+  const totS  = recs.reduce((a, h) => a + h.data.reduce((b, d) => b + d.spent, 0), 0);
+  const totL  = recs.reduce((a, h) => a + h.data.reduce((b, d) => b + d.leads, 0), 0);
+  const avgC  = cpl(totS, totL);
+  const alerts = PRODUCTS.filter((p, i) => {
+    const s = recs.reduce((a, h) => a + h.data[i].spent, 0);
+    const l = recs.reduce((a, h) => a + h.data[i].leads, 0);
+    return l > 0 && cpl(s, l) > p.targetCpl;
+  }).length;
+  const rangeLabel = getFrom() === getTo() ? 'Selected day' : `${recs.length} day${recs.length !== 1 ? 's' : ''}`;
   document.getElementById('summaryCards').innerHTML = `
     <div class="summary-card">
       <p class="s-label">Total Leads</p>
       <p class="s-value">${fmt(totL)}</p>
-      <p class="s-sub">Today</p>
+      <p class="s-sub">${rangeLabel}</p>
     </div>
     <div class="summary-card">
       <p class="s-label">Total Spent</p>
       <p class="s-value">৳${fmt(totS)}</p>
-      <p class="s-sub">Today</p>
+      <p class="s-sub">${rangeLabel}</p>
     </div>
     <div class="summary-card">
       <p class="s-label">Blended CPL</p>
@@ -555,32 +628,34 @@ function buildSummary() {
 
 /* ── PRODUCT CARDS ── */
 function buildProductCards() {
-  const td = todayRec();
+  const recs = selectedRecords();
   document.getElementById('productCards').innerHTML = PRODUCTS.map((p, i) => {
-    const d    = td ? td.data[i] : null;
-    const c    = d  ? cpl(d.spent, d.leads) : 0;
-    const over = d  && d.leads > 0 && c > p.targetCpl;
-    const pct  = d  ? Math.min(Math.round((c / p.targetCpl) * 100), 150) : 0;
+    const totS = recs.reduce((a, h) => a + h.data[i].spent, 0);
+    const totL = recs.reduce((a, h) => a + h.data[i].leads, 0);
+    const hasData = totL > 0 || totS > 0;
+    const c    = cpl(totS, totL);
+    const over = hasData && totL > 0 && c > p.targetCpl;
+    const pct  = hasData ? Math.min(Math.round((c / p.targetCpl) * 100), 150) : 0;
     return `
     <div class="product-card ${over ? 'is-alert' : ''}">
       <div class="pc-top">
         <span class="pc-name"><span class="pc-dot" style="background:${p.color}"></span>${p.name}</span>
-        ${d && d.leads > 0 ? `<span class="tag ${over ? 'tag-red' : 'tag-green'}">${over ? 'Over' : 'OK'}</span>` : ''}
+        ${hasData && totL > 0 ? `<span class="tag ${over ? 'tag-red' : 'tag-green'}">${over ? 'Over' : 'OK'}</span>` : ''}
       </div>
-      <div class="pc-row"><span class="pc-key">Leads</span><span class="pc-val">${d ? fmt(d.leads) : '—'}</span></div>
-      <div class="pc-row"><span class="pc-key">Spent</span><span class="pc-val">${d ? '৳' + fmt(d.spent) : '—'}</span></div>
+      <div class="pc-row"><span class="pc-key">Leads</span><span class="pc-val">${hasData ? fmt(totL) : '—'}</span></div>
+      <div class="pc-row"><span class="pc-key">Spent</span><span class="pc-val">${hasData ? '৳' + fmt(totS) : '—'}</span></div>
       <div class="cpl-block">
         <div class="cpl-nums">
           <div>
             <p class="cpl-lbl">Actual CPL</p>
-            <p class="cpl-big ${d && d.leads > 0 ? (over ? 'red' : 'green') : ''}">${d && d.leads > 0 ? '৳' + c : '—'}</p>
+            <p class="cpl-big ${hasData && totL > 0 ? (over ? 'red' : 'green') : ''}">${hasData && totL > 0 ? '৳' + c : '—'}</p>
           </div>
           <div>
             <p class="cpl-lbl" style="text-align:right">Target</p>
             <p class="cpl-target-sm">৳${p.targetCpl}</p>
           </div>
         </div>
-        ${d && d.leads > 0 ? `
+        ${hasData && totL > 0 ? `
         <div class="prog">
           <div class="prog-fill" style="width:${Math.min(pct,100)}%;background:${over ? 'var(--red)' : 'var(--green)'}"></div>
         </div>` : ''}
@@ -592,8 +667,12 @@ function buildProductCards() {
 /* ── CPL CHART ── */
 let cplChartInst;
 function buildCplChart() {
-  const td      = todayRec();
-  const actuals = PRODUCTS.map((p, i) => td ? cpl(td.data[i].spent, td.data[i].leads) : 0);
+  const recs    = selectedRecords();
+  const actuals = PRODUCTS.map((p, i) => {
+    const s = recs.reduce((a, h) => a + h.data[i].spent, 0);
+    const l = recs.reduce((a, h) => a + h.data[i].leads, 0);
+    return cpl(s, l);
+  });
   const targets = PRODUCTS.map(p => p.targetCpl);
   const ctx = document.getElementById('cplChart').getContext('2d');
   if (cplChartInst) cplChartInst.destroy();
@@ -827,19 +906,66 @@ function closeMTDForm() {
 /* ── TREND CHARTS ── */
 let trendChartInst, leadsChartInst;
 function buildTrend() {
-  if (!history.length) return;
-  const dates  = history.map(h => h.date.slice(5));
-  const cplDs  = PRODUCTS.map((p, i) => ({
+  // Only use days that have actual data (skip empty/today-not-yet-entered)
+  const fromVal = document.getElementById('trendFrom')?.value;
+  const toVal   = document.getElementById('trendTo')?.value;
+
+  let filtered = history.filter(h => h.data.some(d => d.leads > 0 || d.spent > 0));
+  if (fromVal) filtered = filtered.filter(h => h.date >= fromVal);
+  if (toVal)   filtered = filtered.filter(h => h.date <= toVal);
+
+  if (!filtered.length) return;
+
+  const dates = filtered.map(h => h.date.slice(5));
+
+  // ── Build product toggle chips for CPL chart ──
+  const cplFilterEl = document.getElementById('cplProductFilter');
+  if (cplFilterEl && !cplFilterEl.dataset.built) {
+    cplFilterEl.dataset.built = '1';
+    cplFilterEl.innerHTML = ['All', ...PRODUCTS.map(p => p.name)].map((label, idx) => {
+      const isAll = idx === 0;
+      return `<button
+        class="prod-chip ${isAll ? 'chip-active' : ''}"
+        data-chart="cpl" data-idx="${idx - 1}"
+        onclick="toggleTrendProduct(this, 'cpl')"
+        style="font-size:11px;font-family:inherit;padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:${isAll ? 'var(--black)' : '#f0f0f0'};color:${isAll ? '#fff' : '#555'};cursor:pointer">
+        ${label}
+      </button>`;
+    }).join('');
+  }
+
+  // ── Build product toggle chips for Leads chart ──
+  const leadsFilterEl = document.getElementById('leadsProductFilter');
+  if (leadsFilterEl && !leadsFilterEl.dataset.built) {
+    leadsFilterEl.dataset.built = '1';
+    leadsFilterEl.innerHTML = ['All', ...PRODUCTS.map(p => p.name)].map((label, idx) => {
+      const isAll = idx === 0;
+      return `<button
+        class="prod-chip ${isAll ? 'chip-active' : ''}"
+        data-chart="leads" data-idx="${idx - 1}"
+        onclick="toggleTrendProduct(this, 'leads')"
+        style="font-size:11px;font-family:inherit;padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:${isAll ? 'var(--black)' : '#f0f0f0'};color:${isAll ? '#fff' : '#555'};cursor:pointer">
+        ${label}
+      </button>`;
+    }).join('');
+    trendSelectedCpl   = PRODUCTS.map((_, i) => i);
+    trendSelectedLeads = PRODUCTS.map((_, i) => i);
+  }
+
+  // ── CPL Chart ──
+  const cplDs = PRODUCTS.map((p, i) => ({
     label: p.name,
-    data: history.map(h => cpl(h.data[i].spent, h.data[i].leads)),
+    data: filtered.map(h => cpl(h.data[i].spent, h.data[i].leads)),
     borderColor: p.color, backgroundColor: 'transparent',
-    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color
+    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color,
+    hidden: !trendSelectedCpl.includes(i)
   }));
-  const tgtDs  = PRODUCTS.map(p => ({
+  const tgtDs = PRODUCTS.map((p, i) => ({
     label: p.name + ' target',
-    data: history.map(() => p.targetCpl),
+    data: filtered.map(() => p.targetCpl),
     borderColor: p.color, backgroundColor: 'transparent',
-    borderDash: [4, 4], borderWidth: 1, pointRadius: 0
+    borderDash: [4, 4], borderWidth: 1, pointRadius: 0,
+    hidden: !trendSelectedCpl.includes(i)
   }));
   const ctx1 = document.getElementById('trendChart').getContext('2d');
   if (trendChartInst) trendChartInst.destroy();
@@ -849,11 +975,13 @@ function buildTrend() {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#999', font: { size: 11 } } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#999', font: { size: 11 }, callback: v => '৳' + v } } } }
   });
 
+  // ── Leads Chart ──
   const leadsDs = PRODUCTS.map((p, i) => ({
     label: p.name,
-    data: history.map(h => h.data[i].leads),
+    data: filtered.map(h => h.data[i].leads),
     borderColor: p.color, backgroundColor: p.color + '18', fill: true,
-    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color
+    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color,
+    hidden: !trendSelectedLeads.includes(i)
   }));
   const ctx2 = document.getElementById('leadsChart').getContext('2d');
   if (leadsChartInst) leadsChartInst.destroy();
@@ -866,6 +994,40 @@ function buildTrend() {
   const leg = PRODUCTS.map(p => `<span class="leg-item"><span class="leg-dot" style="background:${p.color}"></span>${p.name}</span>`).join('');
   document.getElementById('trendLegend').innerHTML = leg;
   document.getElementById('leadsLegend').innerHTML = leg;
+}
+
+function toggleTrendProduct(btn, chartType) {
+  const idx      = parseInt(btn.dataset.idx); // -1 = All
+  const isAll    = idx === -1;
+  const filterEl = document.getElementById(chartType === 'cpl' ? 'cplProductFilter' : 'leadsProductFilter');
+  const chips    = filterEl.querySelectorAll('button');
+  const selArr   = chartType === 'cpl' ? trendSelectedCpl : trendSelectedLeads;
+
+  if (isAll) {
+    // Select all
+    if (chartType === 'cpl') trendSelectedCpl   = PRODUCTS.map((_, i) => i);
+    else                     trendSelectedLeads = PRODUCTS.map((_, i) => i);
+    chips.forEach((c, ci) => {
+      const active = ci === 0;
+      c.style.background = active ? 'var(--black)' : '#f0f0f0';
+      c.style.color      = active ? '#fff' : '#555';
+    });
+  } else {
+    // Toggle individual product
+    const pos = selArr.indexOf(idx);
+    if (pos >= 0) selArr.splice(pos, 1); else selArr.push(idx);
+    // If all selected, highlight All chip
+    const allSelected = selArr.length === PRODUCTS.length;
+    chips.forEach((c, ci) => {
+      const chipIdx = parseInt(c.dataset.idx);
+      let active;
+      if (ci === 0) active = allSelected;
+      else          active = selArr.includes(chipIdx);
+      c.style.background = active ? 'var(--black)' : '#f0f0f0';
+      c.style.color      = active ? '#fff' : '#555';
+    });
+  }
+  buildTrend();
 }
 
 /* ── HELPERS ── */
@@ -1263,8 +1425,13 @@ async function analyseProduct(pName, auto=false) {
   panel.classList.add('has-alert');
   content.innerHTML = `<span class="loading-dots"><span></span><span></span><span></span></span> AI is analysing ${pName}…`;
 
-  // Build rich context
-  const recent7 = history.slice(-7);
+  // Build rich context — only use days with actual data, never today if not yet entered
+  const todayStr  = new Date().toISOString().slice(0, 10);
+  const daysWithData = history.filter(h =>
+    h.date !== todayStr &&
+    h.data.some(d => d.leads > 0 || d.spent > 0)
+  );
+  const recent7  = daysWithData.slice(-7);
   const dailyData = recent7.map(h => {
     const d = h.data[pi];
     return `  ${h.date}: Spent=৳${d.spent}, Leads=${d.leads}, CPL=৳${cpl(d.spent,d.leads)}`;
@@ -1520,9 +1687,13 @@ function buildStratGrid() {
 
 
 /* ── INIT ── */
-const dateEl = document.getElementById('reportDate');
-dateEl.value = new Date().toISOString().slice(0, 10);
-dateEl.addEventListener('change', render);
+const t0 = today();
+const dateFromEl = document.getElementById('dateFrom');
+const dateToEl   = document.getElementById('dateTo');
+dateFromEl.value = t0;
+dateToEl.value   = t0;
+dateFromEl.addEventListener('change', render);
+dateToEl.addEventListener('change', render);
 checkApiKeyBanner();
 
 // Wait for Firebase to be ready, then load data and start listeners
@@ -1545,7 +1716,8 @@ Object.assign(window, {
   saveDay, saveMTDConfig, showMTDForm, closeMTDForm, previewMTD, recalc,
   switchTab, saveApiKey, saveKB, saveKBForProduct, clearKB, buildKBGrid,
   saveSetup, saveLog, deleteLog, toggleLogForm, renderChangeLog,
-  analyseProduct, clearInsight, runAutoFlags, render
+  analyseProduct, clearInsight, runAutoFlags, render,
+  resetToToday, applyTrendFilters, resetTrendFilters, toggleTrendProduct
 });
 </script>
 </body>
