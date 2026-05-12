@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Campaign Dashboard</title>
+<title>Offline Campaign Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script type="module">
 // ── FIREBASE SETUP ──
@@ -308,7 +308,7 @@ document.dispatchEvent(new Event('firebaseReady'));
 <div class="topbar">
   <div class="topbar-brand">
     <div class="topbar-dot"></div>
-    <span class="topbar-title">Campaign Dashboard</span>
+    <span class="topbar-title">Offline Campaign Dashboard</span>
   </div>
   <div class="topbar-right" style="gap:8px">
     <span class="topbar-date-label">From</span>
@@ -477,6 +477,9 @@ document.dispatchEvent(new Event('firebaseReady'));
     <div class="intel-banner" style="margin-bottom:1.5rem">
       <div class="intel-banner-hdr" style="margin-bottom:4px">
         <span class="intel-banner-title"><span class="ai-dot"></span>Product Knowledge Base</span>
+        <button onclick="openAddProductModal()" style="margin-left:auto;font-family:inherit;font-size:12px;font-weight:700;padding:6px 14px;border-radius:8px;background:var(--black);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;gap:6px">
+          <span style="font-size:16px;line-height:1">+</span> Add Product
+        </button>
       </div>
       <p style="font-size:12px;color:#666;line-height:1.6">Write your product knowledge and ad knowledge for each product. The AI uses this context automatically when analysing campaign performance and diagnosing CPL issues.</p>
     </div>
@@ -484,6 +487,35 @@ document.dispatchEvent(new Event('firebaseReady'));
     <div class="section-wrap">
       <p class="section-label">Product Pages</p>
       <div class="kb-grid" id="kbGrid"></div>
+    </div>
+  </div>
+
+  <!-- ADD PRODUCT MODAL -->
+  <div id="addProductModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:16px;padding:28px 28px 24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.2);position:relative">
+      <button onclick="closeAddProductModal()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:20px;color:#aaa;cursor:pointer;line-height:1">×</button>
+      <p style="font-size:15px;font-weight:700;color:var(--dark);margin-bottom:20px">Add New Product</p>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Product Name</label>
+        <input id="newProductName" type="text" placeholder="e.g. Spoken English Advanced" class="kb-input" style="width:100%;box-sizing:border-box" />
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Product Knowledge</label>
+        <textarea id="newProductKnowledge" class="kb-textarea" placeholder="Describe the product — what it is, who it's for, key benefits, pricing, USPs…" rows="4" style="width:100%;box-sizing:border-box"></textarea>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <label style="font-size:10px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Ad Knowledge</label>
+        <textarea id="newProductAdKnowledge" class="kb-textarea" placeholder="Describe your ads — messaging angles, creatives, hooks, what's working, what's not…" rows="4" style="width:100%;box-sizing:border-box"></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button onclick="saveNewProduct()" style="font-family:inherit;font-size:13px;font-weight:700;padding:9px 22px;border-radius:8px;background:var(--black);color:#fff;border:none;cursor:pointer;flex:1">Save Product</button>
+        <button onclick="closeAddProductModal()" style="font-family:inherit;font-size:13px;padding:9px 16px;border-radius:8px;background:#f0f0f0;color:#555;border:1px solid var(--border);cursor:pointer">Cancel</button>
+      </div>
+      <p id="newProductError" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></p>
     </div>
   </div>
 </div>
@@ -505,13 +537,14 @@ let history   = [];
 // ── FIREBASE SYNC: load all data then render ──
 async function loadFromFirebase() {
   showToast('Syncing data…');
-  const [h, mtd, kb, setups, logs, insights] = await Promise.all([
+  const [h, mtd, kb, setups, logs, insights, extraKB] = await Promise.all([
     fbGet('history'),
     fbGet('mtdConfig'),
     fbGet('productKB'),
     fbGet('campaignSetups'),
     fbGet('changeLogs'),
     fbGet('aiInsights'),
+    fbGet('extraKBProducts'),
   ]);
   if (h)       history          = Array.isArray(h) ? h : Object.values(h);
   if (mtd)     mtdConfig        = mtd;
@@ -519,6 +552,7 @@ async function loadFromFirebase() {
   if (setups)  campaignSetups   = setups;
   if (logs)    changeLogs       = logs;
   if (insights) aiInsights      = insights;
+  if (extraKB) extraKBProducts  = extraKB;
   history.sort((a, b) => a.date < b.date ? -1 : 1);
   render();
   showToast('Data synced ✓');
@@ -537,6 +571,7 @@ function startListeners() {
   fbListen('campaignSetups', val => { if (val) campaignSetups = val; });
   fbListen('changeLogs', val => { if (val) changeLogs = val; });
   fbListen('aiInsights', val => { if (val) aiInsights = val; });
+  fbListen('extraKBProducts', val => { if (val) { extraKBProducts = val; } });
 }
 
 const fmt    = v => Math.round(Number(v)).toLocaleString('en-IN');
@@ -1194,11 +1229,72 @@ function clearKB(pName) {
   showToast('Knowledge cleared.');
 }
 
+// ── EXTRA PRODUCTS (user-added KB-only products) ──
+let extraKBProducts = {};  // { "Product Name": { color: '#xxx' } }
+
+function openAddProductModal() {
+  document.getElementById('newProductName').value = '';
+  document.getElementById('newProductKnowledge').value = '';
+  document.getElementById('newProductAdKnowledge').value = '';
+  document.getElementById('newProductError').style.display = 'none';
+  document.getElementById('addProductModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('newProductName').focus(), 50);
+}
+function closeAddProductModal() {
+  document.getElementById('addProductModal').style.display = 'none';
+}
+
+function saveNewProduct() {
+  const name = document.getElementById('newProductName').value.trim();
+  const errEl = document.getElementById('newProductError');
+  if (!name) { errEl.textContent = 'Please enter a product name.'; errEl.style.display = 'block'; return; }
+  const allNames = [...PRODUCTS.map(p => p.name), ...Object.keys(extraKBProducts)];
+  if (allNames.some(n => n.toLowerCase() === name.toLowerCase())) {
+    errEl.textContent = 'A product with this name already exists.'; errEl.style.display = 'block'; return;
+  }
+  // Assign a colour from a palette
+  const palette = ['#2d6a4f','#1d3557','#6a0572','#b5451b','#0077b6','#7b2d8b','#c77dff','#2196f3'];
+  const color = palette[Object.keys(extraKBProducts).length % palette.length];
+  extraKBProducts[name] = { color };
+  // Save knowledge immediately if provided
+  const knowledge   = document.getElementById('newProductKnowledge').value.trim();
+  const adKnowledge = document.getElementById('newProductAdKnowledge').value.trim();
+  if (knowledge || adKnowledge) {
+    productKB[name] = { knowledge, adKnowledge, savedAt: new Date().toISOString() };
+    saveKB();
+  }
+  saveExtraProducts();
+  closeAddProductModal();
+  buildKBGrid();
+  showToast(`"${name}" added to Knowledge Base`);
+}
+
+function deleteExtraProduct(name) {
+  if (!confirm(`Remove "${name}" from the Knowledge Base?`)) return;
+  delete extraKBProducts[name];
+  delete productKB[name];
+  saveKB();
+  saveExtraProducts();
+  buildKBGrid();
+  showToast(`"${name}" removed`);
+}
+
+function saveExtraProducts() {
+  localStorage.setItem('campDash_extraKB', JSON.stringify(extraKBProducts));
+  fbSet('extraKBProducts', extraKBProducts);
+}
+
 function buildKBGrid() {
   const grid = document.getElementById('kbGrid');
   if (!grid) return;
-  grid.innerHTML = PRODUCTS.map(p => {
-    const kb = productKB[p.name] || {};
+
+  // Combine fixed PRODUCTS + extra user-added products
+  const fixedCards = PRODUCTS.map(p => ({ name: p.name, color: p.color, deletable: false }));
+  const extraCards = Object.entries(extraKBProducts).map(([name, meta]) => ({ name, color: meta.color, deletable: true }));
+  const allCards   = [...fixedCards, ...extraCards];
+
+  grid.innerHTML = allCards.map(({ name, color, deletable }) => {
+    const kb = productKB[name] || {};
     const hasSaved = !!kb.savedAt;
     const savedChip = hasSaved
       ? `<span class="kb-saved-chip">✓ Saved</span>`
@@ -1210,28 +1306,27 @@ function buildKBGrid() {
     return `
     <div class="kb-card">
       <div class="kb-card-hdr">
-        <span class="strat-dot" style="background:${p.color}"></span>
-        <span class="kb-card-title">${p.name}</span>
-        <div style="margin-left:auto">${savedChip}</div>
+        <span class="strat-dot" style="background:${color}"></span>
+        <span class="kb-card-title">${name}</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          ${savedChip}
+          ${deletable ? `<button onclick="deleteExtraProduct('${name}')" title="Remove product" style="background:none;border:none;color:#666;cursor:pointer;font-size:15px;padding:0;line-height:1" title="Remove">✕</button>` : ''}
+        </div>
       </div>
       <div class="kb-body">
-
         <div class="kb-field">
           <label class="kb-label">Product Knowledge</label>
-          <textarea class="kb-textarea ${kb.knowledge?'has-content':''}" id="kb-knowledge-${p.name}" placeholder="Describe the product — what it is, who it's for, key benefits, pricing, USPs…" rows="6">${kb.knowledge||''}</textarea>
+          <textarea class="kb-textarea ${kb.knowledge?'has-content':''}" id="kb-knowledge-${name}" placeholder="Describe the product — what it is, who it's for, key benefits, pricing, USPs…" rows="6">${kb.knowledge||''}</textarea>
         </div>
-
         <div class="kb-field">
           <label class="kb-label">Ad Knowledge</label>
-          <textarea class="kb-textarea ${kb.adKnowledge?'has-content':''}" id="kb-adknowledge-${p.name}" placeholder="Describe your ads — messaging angles, creatives, hooks, what's working, what's not…" rows="6">${kb.adKnowledge||''}</textarea>
+          <textarea class="kb-textarea ${kb.adKnowledge?'has-content':''}" id="kb-adknowledge-${name}" placeholder="Describe your ads — messaging angles, creatives, hooks, what's working, what's not…" rows="6">${kb.adKnowledge||''}</textarea>
         </div>
-
         <div class="kb-actions">
-          <button class="kb-btn-save" onclick="saveKBForProduct('${p.name}')">Save</button>
-          ${hasSaved ? `<button class="kb-btn-clear" onclick="clearKB('${p.name}')">Clear</button>` : ''}
+          <button class="kb-btn-save" onclick="saveKBForProduct('${name}')">Save</button>
+          ${hasSaved ? `<button class="kb-btn-clear" onclick="clearKB('${name}')">Clear</button>` : ''}
         </div>
         ${savedNote}
-
       </div>
     </div>`;
   }).join('');
@@ -1717,7 +1812,8 @@ Object.assign(window, {
   switchTab, saveApiKey, saveKB, saveKBForProduct, clearKB, buildKBGrid,
   saveSetup, saveLog, deleteLog, toggleLogForm, renderChangeLog,
   analyseProduct, clearInsight, runAutoFlags, render,
-  resetToToday, applyTrendFilters, resetTrendFilters, toggleTrendProduct
+  resetToToday, applyTrendFilters, resetTrendFilters, toggleTrendProduct,
+  openAddProductModal, closeAddProductModal, saveNewProduct, deleteExtraProduct
 });
 </script>
 </body>
