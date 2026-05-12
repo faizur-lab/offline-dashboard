@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Campaign Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module">
+// ── FIREBASE SETUP ──
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAFOi04mk-l-cPj0ZdO7f_tZuy0mCC_pE4",
+  authDomain: "offline-campaign-dashboard.firebaseapp.com",
+  databaseURL: "https://offline-campaign-dashboard-default-rtdb.firebaseio.com",
+  projectId: "offline-campaign-dashboard",
+  storageBucket: "offline-campaign-dashboard.firebasestorage.app",
+  messagingSenderId: "615959762342",
+  appId: "1:615959762342:web:288fbcef949af7871ceb67"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ── FIREBASE HELPERS ──
+window.fbSet = async (path, value) => {
+  try { await set(ref(db, path), value); } catch(e) { console.error('FB write error', e); }
+};
+window.fbGet = async (path) => {
+  try { const snap = await get(ref(db, path)); return snap.exists() ? snap.val() : null; } catch(e) { return null; }
+};
+window.fbListen = (path, cb) => {
+  onValue(ref(db, path), snap => cb(snap.exists() ? snap.val() : null));
+};
+
+// Signal that Firebase is ready
+window.firebaseReady = true;
+document.dispatchEvent(new Event('firebaseReady'));
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --red: #D0021B; --red-light: #fff0f1; --red-mid: #ffd6da;
+    --black: #0d0d0d; --dark: #1a1a1a; --mid: #444; --soft: #777;
+    --border: #e8e8e8; --bg: #f4f4f4; --card: #ffffff;
+    --green: #1a7a3c; --green-light: #eaf5ee;
+    --amber: #b35c00; --amber-light: #fff4e5;
+  }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--dark); min-height: 100vh; }
+
+  /* TOPBAR */
+  .topbar { background: var(--black); padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 0 #222; }
+  .topbar-brand { display: flex; align-items: center; gap: 10px; }
+  .topbar-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+  .topbar-title { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.08em; text-transform: uppercase; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .topbar-date-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.06em; }
+  input[type="date"] { font-size: 12px; font-family: inherit; background: #1e1e1e; border: 1px solid #333; border-radius: 6px; padding: 5px 10px; color: #fff; cursor: pointer; }
+  input[type="date"]:focus { outline: none; border-color: var(--red); }
+
+  /* TABS */
+  .tab-bar { background: var(--black); border-top: 1px solid #1e1e1e; padding: 0 2rem; display: flex; gap: 0; }
+  .tab { font-size: 12px; font-family: inherit; font-weight: 500; padding: 10px 20px; cursor: pointer; border: none; background: transparent; color: #555; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; letter-spacing: 0.03em; }
+  .tab:hover { color: #aaa; }
+  .tab.active { color: #fff; border-bottom-color: var(--red); }
+
+  /* LAYOUT */
+  .container { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* SECTION LABELS */
+  .section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--soft); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .section-wrap { margin-bottom: 2rem; }
+
+  /* SUMMARY CARDS */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .summary-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 18px; position: relative; overflow: hidden; }
+  .summary-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--black); border-radius: 12px 12px 0 0; }
+  .summary-card.is-alert::after { background: var(--red); }
+  .s-label { font-size: 10px; font-weight: 600; color: var(--soft); text-transform: uppercase; letter-spacing: 0.07em; margin: 0 0 8px; }
+  .s-value { font-size: 28px; font-weight: 700; color: var(--dark); line-height: 1; margin: 0 0 6px; }
+  .s-value.red { color: var(--red); }
+  .s-value.green { color: var(--green); }
+  .s-sub { font-size: 11px; color: var(--soft); }
+  .s-chip { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; margin-top: 8px; }
+  .chip-red { background: var(--red-light); color: var(--red); }
+  .chip-green { background: var(--green-light); color: var(--green); }
+
+  /* PRODUCT CARDS */
+  .product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .product-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 16px; transition: box-shadow 0.15s; }
+  .product-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .product-card.is-alert { border-color: var(--red); border-width: 1.5px; }
+  .pc-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .pc-name { font-size: 12px; font-weight: 700; color: var(--dark); display: flex; align-items: center; gap: 7px; }
+  .pc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tag { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tag-red { background: var(--red); color: #fff; }
+  .tag-green { background: var(--green-light); color: var(--green); }
+  .pc-row { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .pc-row:last-of-type { border-bottom: none; }
+  .pc-key { font-size: 11px; color: var(--soft); }
+  .pc-val { font-size: 13px; font-weight: 600; color: var(--dark); }
+  .cpl-block { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .cpl-nums { display: flex; justify-content: space-between; align-items: flex-end; }
+  .cpl-lbl { font-size: 10px; color: var(--soft); margin: 0 0 3px; }
+  .cpl-big { font-size: 22px; font-weight: 700; margin: 0; }
+  .cpl-big.red { color: var(--red); }
+  .cpl-big.green { color: var(--green); }
+  .cpl-target-sm { font-size: 11px; color: var(--soft); text-align: right; }
+  .prog { height: 3px; background: var(--border); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 2px; }
+
+  /* CHART */
+  .chart-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 20px; }
+  .chart-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .chart-ttl { font-size: 13px; font-weight: 600; color: var(--dark); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--soft); }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* TABLE */
+  .table-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 500px; }
+  thead tr { background: var(--black); }
+  th { font-size: 11px; font-weight: 700; color: #888; text-align: left; padding: 13px 16px; text-transform: uppercase; letter-spacing: 0.07em; }
+  td { padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--dark); vertical-align: middle; font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  tr.total-row td { font-weight: 800; background: #fafafa; font-size: 16px; }
+  input[type="number"] { width: 110px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 14px; font-weight: 600; font-family: inherit; color: var(--dark); text-align: right; transition: border-color 0.15s; }
+  input[type="number"]:focus { outline: none; border-color: var(--dark); background: #fff; }
+  .cell-red { color: var(--red); font-weight: 700; font-size: 15px; }
+  .cell-green { color: var(--green); font-weight: 700; font-size: 15px; }
+
+  /* MTD */
+  .mtd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+  .mtd-panel { background: var(--card); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+  .mtd-panel-hdr { background: var(--black); padding: 11px 18px; display: flex; align-items: center; gap: 8px; }
+  .mtd-hdr-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+  .mtd-hdr-title { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.08em; }
+  .mtd-body { padding: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .mtd-stat-lbl { font-size: 10px; font-weight: 600; color: var(--soft); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 5px; }
+  .mtd-stat-val { font-size: 24px; font-weight: 700; color: var(--dark); line-height: 1.1; margin: 0; }
+  .mtd-stat-val.red { color: var(--red); }
+  .mtd-stat-val.green { color: var(--green); }
+  .mtd-stat-val.amber { color: var(--amber); }
+  .mtd-stat-sub { font-size: 11px; color: var(--soft); margin: 4px 0 0; }
+  .mtd-full { grid-column: 1 / -1; }
+  .mtd-prog-track { height: 4px; background: var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden; }
+  .mtd-prog-fill { height: 100%; border-radius: 4px; background: var(--red); transition: width 0.4s; }
+
+  /* MTD FORM */
+  .mtd-form-card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 20px; margin-bottom: 8px; }
+  .form-title { font-size: 13px; font-weight: 600; color: var(--dark); margin: 0 0 4px; }
+  .form-sub { font-size: 12px; color: var(--soft); margin: 0 0 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .form-field label { font-size: 11px; color: var(--soft); font-weight: 500; display: block; margin-bottom: 5px; }
+  .form-field input { width: 100%; text-align: left; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--border); font-size: 13px; font-family: inherit; background: var(--bg); color: var(--dark); transition: border-color 0.15s; }
+  .form-field input:focus { outline: none; border-color: var(--dark); background: #fff; }
+  .edit-link { font-size: 11px; color: var(--soft); cursor: pointer; margin-bottom: 1.5rem; display: inline-flex; align-items: center; gap: 5px; }
+  .edit-link:hover { color: var(--dark); }
+
+  /* BUTTONS */
+  .btn { font-family: inherit; font-size: 13px; font-weight: 500; padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: var(--black); color: #fff; border: none; }
+  .btn-primary:hover { background: #333; }
+  .btn-ghost { background: transparent; color: var(--dark); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--bg); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* VIEWS */
+  .view { display: none; }
+  .view.active { display: block; }
+  /* ── STRATEGY PAGE ── */
+  .strat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .strat-card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .strat-card.flagged { border-color: var(--red); border-width: 2px; }
+  .strat-card-hdr { background: var(--black); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .strat-card-title { display: flex; align-items: center; gap: 8px; }
+  .strat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .strat-name { font-size: 13px; font-weight: 700; color: #fff; }
+  .strat-status-chip { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .chip-watch { background: #3a2000; color: #ffb347; }
+  .chip-alert { background: #3a0008; color: #ff6b6b; }
+  .chip-ok { background: #0a2a16; color: #5dd68c; }
+  .strat-body { padding: 18px; }
+  .strat-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--soft); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .strat-section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .setup-field { display: flex; flex-direction: column; gap: 4px; }
+  .setup-label { font-size: 10px; font-weight: 600; color: var(--soft); text-transform: uppercase; letter-spacing: 0.06em; }
+  .setup-select, .setup-input { font-family: inherit; font-size: 13px; font-weight: 500; color: var(--dark); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; width: 100%; transition: border-color 0.15s; }
+  .setup-select:focus, .setup-input:focus { outline: none; border-color: var(--dark); background: #fff; }
+  .setup-full { grid-column: 1 / -1; }
+  .changelog-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .changelog-select { font-family: inherit; font-size: 12px; font-weight: 500; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; color: var(--dark); cursor: pointer; }
+  .changelog-select:focus { outline: none; border-color: var(--dark); }
+  .changelog-entries { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; min-height: 32px; }
+  .log-entry { background: var(--bg); border-radius: 8px; padding: 10px 12px; border-left: 3px solid var(--border); }
+  .log-entry.budget-change { border-left-color: #2563eb; }
+  .log-entry.audience-change { border-left-color: #7c3aed; }
+  .log-entry.creative-change { border-left-color: #d97706; }
+  .log-entry.bid-change { border-left-color: var(--red); }
+  .log-entry.placement-change { border-left-color: #059669; }
+  .log-entry.other-change { border-left-color: #888; }
+  .log-entry-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .log-entry-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--soft); }
+  .log-entry-del { font-size: 11px; color: #ccc; cursor: pointer; background: none; border: none; font-family: inherit; padding: 0; }
+  .log-entry-del:hover { color: var(--red); }
+  .log-entry-text { font-size: 13px; color: var(--dark); font-weight: 500; }
+  .log-entry-reason { font-size: 11px; color: var(--soft); margin-top: 3px; font-style: italic; }
+  .log-add-form { background: var(--bg); border-radius: 10px; padding: 12px; border: 1px dashed var(--border); margin-top: 8px; display: none; }
+  .log-add-form.open { display: block; }
+  .log-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .log-add-btn { font-family: inherit; font-size: 11px; font-weight: 600; color: var(--soft); background: none; border: 1px dashed var(--border); border-radius: 7px; padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; width: 100%; justify-content: center; margin-top: 6px; }
+  .log-add-btn:hover { border-color: var(--dark); color: var(--dark); }
+  .insight-panel { background: var(--black); border-radius: 12px; padding: 16px 18px; margin-top: 14px; }
+  .insight-panel.has-alert { background: #1a0005; border: 1px solid #4a000f; }
+  .insight-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .insight-title { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.07em; display: flex; align-items: center; gap: 7px; }
+  .ai-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: pulse 1.8s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+  .insight-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .insight-btn { font-family: inherit; font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+  .insight-btn-analyse { background: var(--red); color: #fff; border: none; }
+  .insight-btn-analyse:hover { background: #a80016; }
+  .insight-btn-analyse:disabled { background: #555; cursor: not-allowed; }
+  .insight-btn-clear { background: transparent; color: #888; border: 1px solid #333; }
+  .insight-btn-clear:hover { border-color: #666; color: #ccc; }
+  .insight-content { font-size: 13px; color: #ccc; line-height: 1.75; white-space: pre-wrap; }
+  .insight-content.empty { color: #555; font-style: italic; font-size: 12px; }
+  .insight-auto-flag { display: flex; align-items: flex-start; gap: 8px; background: #2a0008; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .insight-flag-text { font-size: 12px; color: #ff8f8f; font-weight: 500; line-height: 1.5; }
+  .loading-dots span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--red); margin: 0 2px; animation: blink 1.2s infinite; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+  .insight-ts { font-size: 10px; color: #444; margin-top: 10px; }
+  .intel-banner { background: var(--black); border-radius: 14px; padding: 20px; margin-bottom: 2rem; border: 1px solid #222; }
+  .intel-banner-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .intel-banner-title { font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 8px; }
+  .intel-product-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+  .intel-product-pill { border-radius: 8px; padding: 10px 12px; border: 1px solid #333; }
+  .intel-pill-name { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+  .intel-pill-status { font-size: 12px; font-weight: 600; }
+  .status-ok { color: #5dd68c; }
+  .status-watch { color: #ffb347; }
+  .status-alert { color: #ff6b6b; }
+  .intel-pill-cpl { font-size: 11px; color: #555; margin-top: 2px; }
+
+  /* ── KNOWLEDGE BASE ── */
+  .kb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .kb-card { background: var(--card); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+  .kb-card-hdr { background: var(--black); padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+  .kb-card-title { font-size: 13px; font-weight: 700; color: #fff; }
+  .kb-body { padding: 18px; }
+  .kb-field { margin-bottom: 14px; }
+  .kb-label { font-size: 10px; font-weight: 700; color: var(--soft); text-transform: uppercase; letter-spacing: 0.07em; display: block; margin-bottom: 5px; }
+  .kb-input { font-family: inherit; font-size: 13px; color: var(--dark); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 11px; width: 100%; transition: border-color 0.15s; }
+  .kb-input:focus { outline: none; border-color: var(--dark); background: #fff; }
+  .kb-textarea { font-family: inherit; font-size: 12px; line-height: 1.65; color: var(--dark); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; width: 100%; resize: vertical; min-height: 130px; transition: border-color 0.15s; }
+  .kb-textarea:focus { outline: none; border-color: var(--dark); background: #fff; }
+  .kb-textarea.has-content { background: #fff; border-color: var(--border); }
+  .kb-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .kb-btn-extract { font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 7px; cursor: pointer; background: var(--black); color: #fff; border: none; transition: background 0.15s; display: flex; align-items: center; gap: 6px; }
+  .kb-btn-extract:hover { background: #333; }
+  .kb-btn-extract:disabled { background: #555; cursor: not-allowed; }
+  .kb-btn-save { font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 7px; cursor: pointer; background: transparent; color: var(--dark); border: 1px solid var(--border); transition: all 0.15s; }
+  .kb-btn-save:hover { background: var(--bg); }
+  .kb-btn-clear { font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; background: transparent; color: #aaa; border: 1px solid var(--border); }
+  .kb-btn-clear:hover { color: var(--red); border-color: var(--red); }
+  .kb-status { font-size: 11px; margin-top: 6px; min-height: 16px; }
+  .kb-status.ok { color: var(--green); }
+  .kb-status.loading { color: var(--soft); }
+  .kb-status.error { color: var(--red); }
+  .kb-saved-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; background: var(--green-light); color: var(--green); padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .kb-section-divider { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--soft); margin: 16px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .kb-section-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+  @media (max-width: 720px) { .kb-grid { grid-template-columns: 1fr; } }
+
+  @media (max-width: 720px) {
+    .strat-grid { grid-template-columns: 1fr; }
+    .setup-grid { grid-template-columns: 1fr; }
+    .intel-product-row { grid-template-columns: 1fr 1fr; }
+    .log-form-row { grid-template-columns: 1fr; }
+  }
+
+
+  /* TOAST */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--black); color: #fff; font-size: 13px; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999; border-left: 3px solid var(--red); }
+  .toast.show { opacity: 1; }
+
+  /* RESPONSIVE */
+  @media (max-width: 720px) {
+    .summary-grid, .product-grid { grid-template-columns: 1fr 1fr; }
+    .mtd-cols { grid-template-columns: 1fr; }
+    .topbar, .tab-bar { padding: 0 1rem; }
+    .container { padding: 1.25rem 1rem; }
+    .topbar-title { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-dot"></div>
+    <span class="topbar-title">Campaign Dashboard</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-date-label">Date</span>
+    <input type="date" id="reportDate" />
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <button class="tab active" onclick="switchTab('daily', this)">Daily View</button>
+  <button class="tab" onclick="switchTab('trend', this)">Trends</button>
+  <button class="tab" onclick="switchTab('strategy', this)">Strategy & AI</button>
+  <button class="tab" onclick="switchTab('knowledge', this)">Product Knowledge</button>
+</div>
+
+<!-- API KEY BANNER -->
+<div id="apiKeyBanner" style="display:none;background:#0a0f1a;border-bottom:1px solid #1a3a6a;padding:10px 2rem;align-items:center;gap:12px;flex-wrap:wrap;">
+  <span style="font-size:12px;color:#8fb8ff;font-weight:600">⚡ Free Groq API key required for AI features</span>
+  <input id="apiKeyInput" type="password" placeholder="gsk_..." style="font-family:inherit;font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid #1a3a6a;background:#0d0d0d;color:#fff;width:280px" />
+  <button onclick="saveApiKey()" style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 14px;border-radius:6px;background:#1a4a9a;color:#fff;border:none;cursor:pointer">Save Key</button>
+  <a href="https://console.groq.com/keys" target="_blank" style="font-size:11px;color:#888;text-decoration:none">Get free Groq API key →</a>
+</div>
+
+<div class="container">
+
+  <!-- DAILY VIEW -->
+  <div id="view-daily" class="view active">
+
+    <!-- 1. OVERVIEW -->
+    <div class="section-wrap">
+      <p class="section-label">Overview</p>
+      <div class="summary-grid" id="summaryCards"></div>
+    </div>
+
+    <!-- 2. BY PRODUCT -->
+    <div class="section-wrap">
+      <p class="section-label">By Product</p>
+      <div class="product-grid" id="productCards"></div>
+    </div>
+
+    <!-- 3. CPL CHART -->
+    <div class="section-wrap">
+      <p class="section-label">CPL vs Target</p>
+      <div class="chart-card">
+        <div class="chart-hdr">
+          <span class="chart-ttl">Actual CPL vs Target CPL — All Products</span>
+          <div class="legend">
+            <span class="leg-item"><span class="leg-dot" style="background:var(--dark)"></span>Actual CPL</span>
+            <span class="leg-item"><span class="leg-dot" style="background:var(--red);opacity:0.5"></span>Target CPL</span>
+          </div>
+        </div>
+        <div style="position:relative;height:210px"><canvas id="cplChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 4. TODAY'S DATA -->
+    <div class="section-wrap">
+      <p class="section-label">Today's Data</p>
+      <div class="table-card" style="margin-bottom:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th style="text-align:right">Spent (৳)</th>
+              <th style="text-align:right">Leads</th>
+              <th style="text-align:right">CPL</th>
+              <th style="text-align:right">Target CPL</th>
+              <th style="text-align:right">Status</th>
+            </tr>
+          </thead>
+          <tbody id="dataTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5. MTD -->
+    <div class="section-wrap">
+      <p class="section-label">Month to Date</p>
+      <div id="mtdSection"></div>
+    </div>
+
+    <!-- 6. SAVE — bottom of page -->
+    <div class="section-wrap">
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveDay()">Save Day</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TREND VIEW -->
+  <div id="view-trend" class="view">
+    <div class="section-wrap">
+      <p class="section-label">CPL Trend</p>
+      <div class="chart-card">
+        <div class="chart-hdr">
+          <span class="chart-ttl">Daily CPL by Product</span>
+          <div class="legend" id="trendLegend"></div>
+        </div>
+        <div style="position:relative;height:260px"><canvas id="trendChart"></canvas></div>
+      </div>
+    </div>
+    <div class="section-wrap">
+      <p class="section-label">Leads Trend</p>
+      <div class="chart-card">
+        <div class="chart-hdr">
+          <span class="chart-ttl">Daily Leads by Product</span>
+          <div class="legend" id="leadsLegend"></div>
+        </div>
+        <div style="position:relative;height:230px"><canvas id="leadsChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- STRATEGY & AI VIEW -->
+  <div id="view-strategy" class="view">
+
+    <!-- INTEL BANNER -->
+    <div class="intel-banner">
+      <div class="intel-banner-hdr">
+        <span class="intel-banner-title"><span class="ai-dot"></span>Campaign Intelligence — Auto Status (Groq AI)</span>
+        <span style="font-size:11px;color:#555" id="intel-last-checked"></span>
+      </div>
+      <div class="intel-product-row" id="intelProductRow"></div>
+    </div>
+
+    <div class="section-wrap">
+      <p class="section-label">Campaign Setup & AI Analysis</p>
+      <div class="strat-grid" id="stratGrid"></div>
+    </div>
+
+  </div>
+
+  <!-- KNOWLEDGE BASE VIEW -->
+  <div id="view-knowledge" class="view">
+    <div class="intel-banner" style="margin-bottom:1.5rem">
+      <div class="intel-banner-hdr" style="margin-bottom:4px">
+        <span class="intel-banner-title"><span class="ai-dot"></span>Product Knowledge Base</span>
+      </div>
+      <p style="font-size:12px;color:#666;line-height:1.6">Write your product knowledge and ad knowledge for each product. The AI uses this context automatically when analysing campaign performance and diagnosing CPL issues.</p>
+    </div>
+
+    <div class="section-wrap">
+      <p class="section-label">Product Pages</p>
+      <div class="kb-grid" id="kbGrid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+const PRODUCTS = [
+  { name: 'IELTS',          targetCpl: 25, color: '#0d0d0d' },
+  { name: 'SEJ',            targetCpl: 25, color: '#D0021B' },
+  { name: 'Kids English',   targetCpl: 35, color: '#555555' },
+  { name: 'Spoken English', targetCpl: 25, color: '#888888' },
+];
+
+const DEFAULT_MTD = { targetLeads: 27435, targetSpend: 676000, seedLeads: 0, seedSpend: 0, seedSaved: false };
+let mtdConfig = { ...DEFAULT_MTD };
+let history   = [];
+
+// ── FIREBASE SYNC: load all data then render ──
+async function loadFromFirebase() {
+  showToast('Syncing data…');
+  const [h, mtd, kb, setups, logs, insights] = await Promise.all([
+    fbGet('history'),
+    fbGet('mtdConfig'),
+    fbGet('productKB'),
+    fbGet('campaignSetups'),
+    fbGet('changeLogs'),
+    fbGet('aiInsights'),
+  ]);
+  if (h)       history          = Array.isArray(h) ? h : Object.values(h);
+  if (mtd)     mtdConfig        = mtd;
+  if (kb)      productKB        = kb;
+  if (setups)  campaignSetups   = setups;
+  if (logs)    changeLogs       = logs;
+  if (insights) aiInsights      = insights;
+  history.sort((a, b) => a.date < b.date ? -1 : 1);
+  render();
+  showToast('Data synced ✓');
+}
+
+// ── REAL-TIME LISTENERS (so teammates see updates instantly) ──
+function startListeners() {
+  fbListen('history', val => {
+    if (!val) return;
+    history = Array.isArray(val) ? val : Object.values(val);
+    history.sort((a, b) => a.date < b.date ? -1 : 1);
+    render();
+  });
+  fbListen('mtdConfig', val => { if (val) { mtdConfig = val; render(); } });
+  fbListen('productKB', val => { if (val) productKB = val; });
+  fbListen('campaignSetups', val => { if (val) campaignSetups = val; });
+  fbListen('changeLogs', val => { if (val) changeLogs = val; });
+  fbListen('aiInsights', val => { if (val) aiInsights = val; });
+}
+
+const fmt    = v => Math.round(Number(v)).toLocaleString('en-IN');
+const cpl    = (s, l) => l > 0 ? Math.round(s / l) : 0;
+const getDay = () => document.getElementById('reportDate').value;
+const todayRec = () => history.find(h => h.date === getDay()) || null;
+
+function dailySums() {
+  return history.reduce((acc, day) => {
+    acc.leads += day.data.reduce((a, d) => a + d.leads, 0);
+    acc.spend += day.data.reduce((a, d) => a + d.spent, 0);
+    return acc;
+  }, { leads: 0, spend: 0 });
+}
+
+/* ── SUMMARY ── */
+function buildSummary() {
+  const td   = todayRec();
+  const totS = td ? td.data.reduce((a, d) => a + d.spent, 0) : 0;
+  const totL = td ? td.data.reduce((a, d) => a + d.leads, 0) : 0;
+  const avgC = cpl(totS, totL);
+  const alerts = td ? td.data.filter((d, i) => cpl(d.spent, d.leads) > PRODUCTS[i].targetCpl && d.leads > 0).length : 0;
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="summary-card">
+      <p class="s-label">Total Leads</p>
+      <p class="s-value">${fmt(totL)}</p>
+      <p class="s-sub">Today</p>
+    </div>
+    <div class="summary-card">
+      <p class="s-label">Total Spent</p>
+      <p class="s-value">৳${fmt(totS)}</p>
+      <p class="s-sub">Today</p>
+    </div>
+    <div class="summary-card">
+      <p class="s-label">Blended CPL</p>
+      <p class="s-value ${totL > 0 && avgC > 28 ? 'red' : ''}">${totL > 0 ? '৳' + avgC : '—'}</p>
+      <p class="s-sub">Across all products</p>
+    </div>
+    <div class="summary-card ${alerts > 0 ? 'is-alert' : ''}">
+      <p class="s-label">CPL Alerts</p>
+      <p class="s-value ${alerts > 0 ? 'red' : 'green'}">${alerts}</p>
+      <span class="s-chip ${alerts > 0 ? 'chip-red' : 'chip-green'}">${alerts > 0 ? alerts + ' over target' : 'All on track'}</span>
+    </div>`;
+}
+
+/* ── PRODUCT CARDS ── */
+function buildProductCards() {
+  const td = todayRec();
+  document.getElementById('productCards').innerHTML = PRODUCTS.map((p, i) => {
+    const d    = td ? td.data[i] : null;
+    const c    = d  ? cpl(d.spent, d.leads) : 0;
+    const over = d  && d.leads > 0 && c > p.targetCpl;
+    const pct  = d  ? Math.min(Math.round((c / p.targetCpl) * 100), 150) : 0;
+    return `
+    <div class="product-card ${over ? 'is-alert' : ''}">
+      <div class="pc-top">
+        <span class="pc-name"><span class="pc-dot" style="background:${p.color}"></span>${p.name}</span>
+        ${d && d.leads > 0 ? `<span class="tag ${over ? 'tag-red' : 'tag-green'}">${over ? 'Over' : 'OK'}</span>` : ''}
+      </div>
+      <div class="pc-row"><span class="pc-key">Leads</span><span class="pc-val">${d ? fmt(d.leads) : '—'}</span></div>
+      <div class="pc-row"><span class="pc-key">Spent</span><span class="pc-val">${d ? '৳' + fmt(d.spent) : '—'}</span></div>
+      <div class="cpl-block">
+        <div class="cpl-nums">
+          <div>
+            <p class="cpl-lbl">Actual CPL</p>
+            <p class="cpl-big ${d && d.leads > 0 ? (over ? 'red' : 'green') : ''}">${d && d.leads > 0 ? '৳' + c : '—'}</p>
+          </div>
+          <div>
+            <p class="cpl-lbl" style="text-align:right">Target</p>
+            <p class="cpl-target-sm">৳${p.targetCpl}</p>
+          </div>
+        </div>
+        ${d && d.leads > 0 ? `
+        <div class="prog">
+          <div class="prog-fill" style="width:${Math.min(pct,100)}%;background:${over ? 'var(--red)' : 'var(--green)'}"></div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── CPL CHART ── */
+let cplChartInst;
+function buildCplChart() {
+  const td      = todayRec();
+  const actuals = PRODUCTS.map((p, i) => td ? cpl(td.data[i].spent, td.data[i].leads) : 0);
+  const targets = PRODUCTS.map(p => p.targetCpl);
+  const ctx = document.getElementById('cplChart').getContext('2d');
+  if (cplChartInst) cplChartInst.destroy();
+  cplChartInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: PRODUCTS.map(p => p.name),
+      datasets: [
+        { label: 'Actual CPL', data: actuals, backgroundColor: PRODUCTS.map(p => p.color), borderRadius: 5, barPercentage: 0.45 },
+        { label: 'Target CPL', data: targets, backgroundColor: 'rgba(208,2,27,0.1)', borderColor: 'rgba(208,2,27,0.45)', borderWidth: 1, borderRadius: 5, barPercentage: 0.45 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#999', font: { size: 11, family: 'Inter' } } },
+        y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#999', font: { size: 11, family: 'Inter' }, callback: v => '৳' + v } }
+      }
+    }
+  });
+}
+
+/* ── TODAY'S TABLE ── */
+function buildInputs() {
+  const td = todayRec();
+  const rows = PRODUCTS.map((p, i) => {
+    const d    = td ? td.data[i] : null;
+    const s    = d  ? d.spent : '';
+    const l    = d  ? d.leads : '';
+    const c    = d  ? cpl(d.spent, d.leads) : '';
+    const over = d  && d.leads > 0 && c > p.targetCpl;
+    return `<tr>
+      <td style="font-weight:700;font-size:15px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0"></span>${p.name}
+        </div>
+      </td>
+      <td style="text-align:right"><input type="number" id="s${i}" value="${s}" placeholder="0" oninput="recalc(${i})" /></td>
+      <td style="text-align:right"><input type="number" id="l${i}" value="${l}" placeholder="0" oninput="recalc(${i})" /></td>
+      <td style="text-align:right" id="c${i}" class="${over ? 'cell-red' : 'cell-green'}">${c !== '' ? '৳' + c : ''}</td>
+      <td style="text-align:right;color:#aaa">৳${p.targetCpl}</td>
+      <td style="text-align:right" id="st${i}">${d && d.leads > 0 ? `<span class="tag ${over ? 'tag-red' : 'tag-green'}">${over ? 'Over' : 'On track'}</span>` : ''}</td>
+    </tr>`;
+  }).join('');
+  const td2  = todayRec();
+  const totS = td2 ? td2.data.reduce((a, d) => a + d.spent, 0) : 0;
+  const totL = td2 ? td2.data.reduce((a, d) => a + d.leads, 0) : 0;
+  document.getElementById('dataTable').innerHTML = rows + `
+    <tr class="total-row">
+      <td>Total</td>
+      <td style="text-align:right">${td2 ? '৳' + fmt(totS) : ''}</td>
+      <td style="text-align:right">${td2 ? fmt(totL) : ''}</td>
+      <td style="text-align:right">${td2 && totL > 0 ? '৳' + cpl(totS, totL) : ''}</td>
+      <td></td><td></td>
+    </tr>`;
+}
+
+function recalc(i) {
+  const s    = parseFloat(document.getElementById('s' + i).value) || 0;
+  const l    = parseFloat(document.getElementById('l' + i).value) || 0;
+  const c    = cpl(s, l);
+  const over = l > 0 && c > PRODUCTS[i].targetCpl;
+  const cell = document.getElementById('c' + i);
+  cell.textContent = l > 0 ? '৳' + c : '';
+  cell.className   = over ? 'cell-red' : 'cell-green';
+  document.getElementById('st' + i).innerHTML = l > 0
+    ? `<span class="tag ${over ? 'tag-red' : 'tag-green'}">${over ? 'Over' : 'On track'}</span>`
+    : '';
+}
+
+function saveDay() {
+  const d    = getDay();
+  const data = PRODUCTS.map((_, i) => ({
+    spent: parseFloat(document.getElementById('s' + i).value) || 0,
+    leads: parseFloat(document.getElementById('l' + i).value) || 0,
+  }));
+  const idx = history.findIndex(h => h.date === d);
+  if (idx >= 0) history[idx].data = data; else history.push({ date: d, data });
+  history.sort((a, b) => a.date < b.date ? -1 : 1);
+  localStorage.setItem('campDash_v1', JSON.stringify(history));
+  fbSet('history', history);
+  showToast('Day saved!');
+  render();
+}
+
+/* ── MTD ── */
+function buildMTD() {
+  const { leads: dL, spend: dS } = dailySums();
+  const seedSaved = mtdConfig.seedSaved;
+  const tgtL  = mtdConfig.targetLeads, tgtS = mtdConfig.targetSpend;
+  const leads = mtdConfig.seedLeads + dL;
+  const spend = mtdConfig.seedSpend + dS;
+  const pctL  = tgtL > 0 ? Math.round((leads / tgtL) * 100) : 0;
+  const pctS  = tgtS > 0 ? Math.round((spend / tgtS) * 100) : 0;
+  const bud   = tgtS - spend;
+  const pctCls = pctL < 50 ? 'red' : pctL < 80 ? 'amber' : 'green';
+
+  const colsHTML = `
+  <div class="mtd-cols">
+    <div class="mtd-panel">
+      <div class="mtd-panel-hdr"><span class="mtd-hdr-dot"></span><span class="mtd-hdr-title">Lead Acquisition</span></div>
+      <div class="mtd-body">
+        <div>
+          <p class="mtd-stat-lbl">MTD Target</p>
+          <p class="mtd-stat-val">${fmt(tgtL)}</p>
+          <p class="mtd-stat-sub">leads</p>
+        </div>
+        <div>
+          <p class="mtd-stat-lbl">MTD Achieved</p>
+          <p class="mtd-stat-val" id="mv-achieved">${fmt(leads)}</p>
+          <p class="mtd-stat-sub" id="ms-achieved">${pctL}% of target</p>
+        </div>
+        <div class="mtd-full">
+          <p class="mtd-stat-lbl">MTD Achieved %</p>
+          <p class="mtd-stat-val ${pctCls}" id="mv-pct">${pctL}%</p>
+          <div class="mtd-prog-track"><div class="mtd-prog-fill" id="mp-leads" style="width:${Math.min(pctL,100)}%"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="mtd-panel">
+      <div class="mtd-panel-hdr"><span class="mtd-hdr-dot"></span><span class="mtd-hdr-title">MPB Spend</span></div>
+      <div class="mtd-body">
+        <div>
+          <p class="mtd-stat-lbl">Spend Target</p>
+          <p class="mtd-stat-val">৳${fmt(tgtS)}</p>
+        </div>
+        <div>
+          <p class="mtd-stat-lbl">MTD Spend</p>
+          <p class="mtd-stat-val" id="mv-spend">৳${fmt(spend)}</p>
+          <p class="mtd-stat-sub">${pctS}% used</p>
+        </div>
+        <div class="mtd-full">
+          <p class="mtd-stat-lbl">Budget in Hand</p>
+          <p class="mtd-stat-val ${bud < 0 ? 'red' : ''}" id="mv-budget">৳${fmt(bud)}</p>
+          <div class="mtd-prog-track"><div class="mtd-prog-fill" id="mp-spend" style="width:${Math.min(pctS,100)}%;background:${pctS > 90 ? 'var(--red)' : 'var(--dark)'}"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  const formHTML = `
+  <div class="mtd-form-card" id="mtdFormCard">
+    <p class="form-title">Set Opening MTD Figures</p>
+    <p class="form-sub">Enter your MTD totals <em>before</em> today — the dashboard stacks each saved day on top of these going forward.</p>
+    <div class="form-grid">
+      <div class="form-field"><label>MTD Leads achieved so far</label><input type="number" id="seedLeads" value="${mtdConfig.seedLeads || ''}" placeholder="e.g. 4303" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Spend so far (৳)</label><input type="number" id="seedSpend" value="${mtdConfig.seedSpend || ''}" placeholder="e.g. 72926" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Lead Target</label><input type="number" id="cfgTargetLeads" value="${tgtL}" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Spend Target (৳)</label><input type="number" id="cfgTargetSpend" value="${tgtS}" oninput="previewMTD()" /></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="saveMTDConfig()">Save MTD Figures</button>
+    </div>
+  </div>`;
+
+  const editLink = seedSaved
+    ? `<span class="edit-link" id="editMtdLink" onclick="showMTDForm()">✏ Edit opening MTD figures</span>`
+    : '';
+
+  document.getElementById('mtdSection').innerHTML =
+    colsHTML + (seedSaved ? editLink + '<div id="mtdFormSlot"></div>' : formHTML);
+}
+
+function previewMTD() {
+  const sL = parseFloat(document.getElementById('seedLeads')?.value) || 0;
+  const sS = parseFloat(document.getElementById('seedSpend')?.value) || 0;
+  const tL = parseFloat(document.getElementById('cfgTargetLeads')?.value) || 0;
+  const tS = parseFloat(document.getElementById('cfgTargetSpend')?.value) || 0;
+  const { leads: dL, spend: dS } = dailySums();
+  const leads = sL + dL, spend = sS + dS;
+  const pct  = tL > 0 ? Math.round((leads / tL) * 100) : 0;
+  const pctS = tS > 0 ? Math.round((spend / tS) * 100) : 0;
+  const bud  = tS - spend;
+  const set  = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('mv-achieved', fmt(leads));
+  set('ms-achieved', pct + '% of target');
+  set('mv-pct', pct + '%');
+  set('mv-spend', '৳' + fmt(spend));
+  set('mv-budget', '৳' + fmt(bud));
+  const pEl = document.getElementById('mv-pct');
+  if (pEl) pEl.className = 'mtd-stat-val ' + (pct < 50 ? 'red' : pct < 80 ? 'amber' : 'green');
+  const bEl = document.getElementById('mv-budget');
+  if (bEl) bEl.className = 'mtd-stat-val ' + (bud < 0 ? 'red' : '');
+  const pl = document.getElementById('mp-leads'); if (pl) pl.style.width = Math.min(pct, 100) + '%';
+  const ps = document.getElementById('mp-spend'); if (ps) { ps.style.width = Math.min(pctS, 100) + '%'; ps.style.background = pctS > 90 ? 'var(--red)' : 'var(--dark)'; }
+}
+
+function saveMTDConfig() {
+  const g = id => { const el = document.getElementById(id); return el ? parseFloat(el.value) || 0 : null; };
+  const sL = g('seedLeads'), sS = g('seedSpend'), tL = g('cfgTargetLeads'), tS = g('cfgTargetSpend');
+  if (sL !== null) mtdConfig.seedLeads  = sL;
+  if (sS !== null) mtdConfig.seedSpend  = sS;
+  if (tL !== null) mtdConfig.targetLeads = tL || 27435;
+  if (tS !== null) mtdConfig.targetSpend = tS || 676000;
+  mtdConfig.seedSaved = true;
+  localStorage.setItem('campDash_mtd', JSON.stringify(mtdConfig));
+  fbSet('mtdConfig', mtdConfig);
+  showToast('MTD figures saved!');
+  render();
+}
+
+function showMTDForm() {
+  const slot = document.getElementById('mtdFormSlot');
+  const link = document.getElementById('editMtdLink');
+  if (!slot) return;
+  const tL = mtdConfig.targetLeads, tS = mtdConfig.targetSpend;
+  slot.innerHTML = `
+  <div class="mtd-form-card">
+    <p class="form-title">Edit Opening MTD Figures</p>
+    <p class="form-sub">These are your totals before today. Each saved day stacks on top of these.</p>
+    <div class="form-grid">
+      <div class="form-field"><label>MTD Leads achieved so far</label><input type="number" id="seedLeads" value="${mtdConfig.seedLeads || ''}" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Spend so far (৳)</label><input type="number" id="seedSpend" value="${mtdConfig.seedSpend || ''}" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Lead Target</label><input type="number" id="cfgTargetLeads" value="${tL}" oninput="previewMTD()" /></div>
+      <div class="form-field"><label>MTD Spend Target (৳)</label><input type="number" id="cfgTargetSpend" value="${tS}" oninput="previewMTD()" /></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="saveMTDConfig()">Save</button>
+      <button class="btn btn-ghost" onclick="closeMTDForm()">Cancel</button>
+    </div>
+  </div>`;
+  if (link) link.style.display = 'none';
+}
+
+function closeMTDForm() {
+  const slot = document.getElementById('mtdFormSlot'); if (slot) slot.innerHTML = '';
+  const link = document.getElementById('editMtdLink'); if (link) link.style.display = '';
+}
+
+/* ── TREND CHARTS ── */
+let trendChartInst, leadsChartInst;
+function buildTrend() {
+  if (!history.length) return;
+  const dates  = history.map(h => h.date.slice(5));
+  const cplDs  = PRODUCTS.map((p, i) => ({
+    label: p.name,
+    data: history.map(h => cpl(h.data[i].spent, h.data[i].leads)),
+    borderColor: p.color, backgroundColor: 'transparent',
+    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color
+  }));
+  const tgtDs  = PRODUCTS.map(p => ({
+    label: p.name + ' target',
+    data: history.map(() => p.targetCpl),
+    borderColor: p.color, backgroundColor: 'transparent',
+    borderDash: [4, 4], borderWidth: 1, pointRadius: 0
+  }));
+  const ctx1 = document.getElementById('trendChart').getContext('2d');
+  if (trendChartInst) trendChartInst.destroy();
+  trendChartInst = new Chart(ctx1, {
+    type: 'line',
+    data: { labels: dates, datasets: [...cplDs, ...tgtDs] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#999', font: { size: 11 } } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#999', font: { size: 11 }, callback: v => '৳' + v } } } }
+  });
+
+  const leadsDs = PRODUCTS.map((p, i) => ({
+    label: p.name,
+    data: history.map(h => h.data[i].leads),
+    borderColor: p.color, backgroundColor: p.color + '18', fill: true,
+    tension: 0.3, borderWidth: 2, pointRadius: 3, pointBackgroundColor: p.color
+  }));
+  const ctx2 = document.getElementById('leadsChart').getContext('2d');
+  if (leadsChartInst) leadsChartInst.destroy();
+  leadsChartInst = new Chart(ctx2, {
+    type: 'line',
+    data: { labels: dates, datasets: leadsDs },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#999', font: { size: 11 } } }, y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { color: '#999', font: { size: 11 } } } } }
+  });
+
+  const leg = PRODUCTS.map(p => `<span class="leg-item"><span class="leg-dot" style="background:${p.color}"></span>${p.name}</span>`).join('');
+  document.getElementById('trendLegend').innerHTML = leg;
+  document.getElementById('leadsLegend').innerHTML = leg;
+}
+
+/* ── HELPERS ── */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function render() {
+  buildSummary();
+  buildProductCards();
+  buildCplChart();
+  buildInputs();
+  buildMTD();
+  if (document.getElementById('view-trend').classList.contains('active')) buildTrend();
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('view-' + tab).classList.add('active');
+  if (tab === 'trend') buildTrend();
+  if (tab === 'strategy') buildStratGrid();
+  if (tab === 'knowledge') buildKBGrid();
+}
+
+
+
+
+/* ── API KEY (stays local — each user has their own Groq key) ── */
+function getApiKey() { return localStorage.getItem('campDash_groq_apikey') || ''; }
+function saveApiKey() {
+  const val = document.getElementById('apiKeyInput')?.value.trim();
+  if (!val) { showToast('Please enter a key'); return; }
+  localStorage.setItem('campDash_groq_apikey', val);
+  showToast('Groq API key saved!');
+  document.getElementById('apiKeyInput').value = '••••••••••••••••••••' + val.slice(-4);
+  document.getElementById('apiKeyBanner').style.display = 'none';
+}
+
+function checkApiKeyBanner() {
+  const banner = document.getElementById('apiKeyBanner');
+  if (!banner) return;
+  banner.style.display = getApiKey() ? 'none' : 'flex';
+}
+
+/* ═══════════════════════════════════════════
+   PRODUCT KNOWLEDGE BASE
+═══════════════════════════════════════════ */
+
+let productKB = {};
+function saveKB() { localStorage.setItem('campDash_kb', JSON.stringify(productKB)); fbSet('productKB', productKB); }
+
+function getProductKnowledge(pName) {
+  const kb = productKB[pName] || {};
+  const parts = [];
+  if (kb.knowledge)   parts.push('PRODUCT KNOWLEDGE:\n' + kb.knowledge);
+  if (kb.adKnowledge) parts.push('AD KNOWLEDGE:\n' + kb.adKnowledge);
+  if (!parts.length)  return '';
+  return '\n\n' + parts.join('\n\n');
+}
+
+async function extractKnowledge(pName) {
+  const lpUrl  = document.getElementById('kb-lp-'  + pName)?.value.trim();
+  const adUrl  = document.getElementById('kb-ad-'  + pName)?.value.trim();
+  const status = document.getElementById('kb-status-' + pName);
+  const area   = document.getElementById('kb-knowledge-' + pName);
+  const btn    = document.getElementById('kb-extract-btn-' + pName);
+
+  if (!lpUrl && !adUrl) {
+    if (status) { status.className = 'kb-status error'; status.textContent = '⚠ Please enter at least one URL.'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Extracting…'; }
+  if (status) { status.className = 'kb-status loading'; status.textContent = 'AI is reading the page…'; }
+
+  const urlContext = [
+    lpUrl ? `Landing Page URL: ${lpUrl}` : '',
+    adUrl ? `Facebook Ad Library URL: ${adUrl}` : ''
+  ].filter(Boolean).join('\n');
+
+  const prompt = `You are a product intelligence analyst. I will give you URLs for a product called "${pName}" (an English language education course in Bangladesh).
+
+${urlContext}
+
+Your task: Based on the URLs provided, extract and synthesise the following information about this product. If you cannot access the URL content directly, use the URL structure, domain, and any contextual clues available, and clearly note what is inferred vs confirmed.
+
+Please provide a structured knowledge brief with these sections:
+
+PRODUCT OVERVIEW
+What this product is, what it offers, course structure if apparent, duration, format (online/offline/hybrid).
+
+TARGET AUDIENCE
+Who this product is for — age range, demographics, life stage, goals, pain points they are trying to solve.
+
+KEY SELLING POINTS
+The main value propositions and benefits — what makes this product compelling to its audience.
+
+MESSAGING ANGLES
+The emotional and rational hooks likely used in ads — fear of missing out, aspiration, career outcome, affordability, etc.
+
+COMPETITIVE POSITIONING
+How this product likely differentiates from alternatives (other coaching centres, online courses, self-study).
+
+AD TARGETING SIGNALS
+Based on the audience profile, suggest Meta ad targeting interests, behaviours, and demographics most likely to convert.
+
+Be specific and practical. This knowledge will be used by a media buyer to diagnose CPL issues and optimise Meta campaigns.`;
+
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error('No Groq API key set. Please add your key in the banner above.');
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    const text = data.choices?.[0]?.message?.content || '';
+    if (!text) throw new Error('Empty response — check API key and try again.');
+
+    if (area) { area.value = text; area.className = 'kb-textarea has-content'; }
+    if (status) { status.className = 'kb-status ok'; status.textContent = '✓ Extracted successfully — review, edit if needed, then Save.'; }
+
+    // Auto-save URLs
+    if (!productKB[pName]) productKB[pName] = {};
+    productKB[pName].lpUrl  = lpUrl;
+    productKB[pName].adUrl  = adUrl;
+    saveKB();
+  } catch (err) {
+    if (status) { status.className = 'kb-status error'; status.textContent = '⚠ Extraction failed: ' + err.message; }
+    if (area && !area.value) {
+      area.value = 'Could not auto-extract. You can manually type product knowledge here.\n\nSuggested sections:\n- Product Overview\n- Target Audience\n- Key Selling Points\n- Messaging Angles\n- Ad Targeting Signals';
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '⚡ Extract from URLs'; }
+}
+
+function saveKBForProduct(pName) {
+  const knowledge   = document.getElementById('kb-knowledge-'   + pName)?.value.trim() || '';
+  const adKnowledge = document.getElementById('kb-adknowledge-' + pName)?.value.trim() || '';
+  if (!productKB[pName]) productKB[pName] = {};
+  productKB[pName] = { knowledge, adKnowledge, savedAt: new Date().toISOString() };
+  saveKB();
+  showToast(pName + ' knowledge saved!');
+  buildKBGrid();
+}
+
+function clearKB(pName) {
+  if (!confirm('Clear all knowledge for ' + pName + '?')) return;
+  delete productKB[pName];
+  saveKB();
+  buildKBGrid();
+  showToast('Knowledge cleared.');
+}
+
+function buildKBGrid() {
+  const grid = document.getElementById('kbGrid');
+  if (!grid) return;
+  grid.innerHTML = PRODUCTS.map(p => {
+    const kb = productKB[p.name] || {};
+    const hasSaved = !!kb.savedAt;
+    const savedChip = hasSaved
+      ? `<span class="kb-saved-chip">✓ Saved</span>`
+      : `<span style="font-size:11px;color:#aaa">Not saved yet</span>`;
+    const savedNote = hasSaved
+      ? `<span style="font-size:10px;color:#aaa">Last saved: ${new Date(kb.savedAt).toLocaleString()}</span>`
+      : '';
+
+    return `
+    <div class="kb-card">
+      <div class="kb-card-hdr">
+        <span class="strat-dot" style="background:${p.color}"></span>
+        <span class="kb-card-title">${p.name}</span>
+        <div style="margin-left:auto">${savedChip}</div>
+      </div>
+      <div class="kb-body">
+
+        <div class="kb-field">
+          <label class="kb-label">Product Knowledge</label>
+          <textarea class="kb-textarea ${kb.knowledge?'has-content':''}" id="kb-knowledge-${p.name}" placeholder="Describe the product — what it is, who it's for, key benefits, pricing, USPs…" rows="6">${kb.knowledge||''}</textarea>
+        </div>
+
+        <div class="kb-field">
+          <label class="kb-label">Ad Knowledge</label>
+          <textarea class="kb-textarea ${kb.adKnowledge?'has-content':''}" id="kb-adknowledge-${p.name}" placeholder="Describe your ads — messaging angles, creatives, hooks, what's working, what's not…" rows="6">${kb.adKnowledge||''}</textarea>
+        </div>
+
+        <div class="kb-actions">
+          <button class="kb-btn-save" onclick="saveKBForProduct('${p.name}')">Save</button>
+          ${hasSaved ? `<button class="kb-btn-clear" onclick="clearKB('${p.name}')">Clear</button>` : ''}
+        </div>
+        ${savedNote}
+
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════
+   STRATEGY & AI ENGINE
+═══════════════════════════════════════════ */
+
+// ---------- DATA STORES ----------
+let campaignSetups  = {};
+let changeLogs      = {};
+let aiInsights      = {};
+
+function saveSetups()   { localStorage.setItem('campDash_setups',   JSON.stringify(campaignSetups)); fbSet('campaignSetups', campaignSetups); }
+function saveLogs()     { localStorage.setItem('campDash_logs',     JSON.stringify(changeLogs));     fbSet('changeLogs',     changeLogs); }
+function saveInsights() { localStorage.setItem('campDash_insights', JSON.stringify(aiInsights));     fbSet('aiInsights',     aiInsights); }
+
+// ---------- AUTO-FLAG LOGIC ----------
+function getCPLStatus(productIdx) {
+  if (history.length < 1) return { status: 'ok', reason: 'No data yet' };
+  const p = PRODUCTS[productIdx];
+  const recent = history.slice(-7);
+  const cpls = recent.map(h => cpl(h.data[productIdx].spent, h.data[productIdx].leads)).filter(c => c > 0);
+  if (!cpls.length) return { status: 'ok', reason: 'No data yet' };
+  const latest = cpls[cpls.length - 1];
+  const prev   = cpls.length > 1 ? cpls[cpls.length - 2] : latest;
+  const trend2Over = cpls.length >= 2 && cpls.slice(-2).every(c => c > p.targetCpl);
+  const bigSpike   = latest > p.targetCpl * 1.2;
+  const rising     = latest > prev * 1.15 && latest > p.targetCpl;
+  if (trend2Over || bigSpike) return { status: 'alert', reason: `CPL ৳${latest} — ${bigSpike ? '>20% above target' : '2+ days over target'}` };
+  if (rising) return { status: 'watch', reason: `CPL rising — ৳${prev}→৳${latest}` };
+  return { status: 'ok', reason: `CPL ৳${latest} — on track` };
+}
+
+// ---------- INTEL BANNER ----------
+function buildIntelBanner() {
+  const row = document.getElementById('intelProductRow');
+  if (!row) return;
+  row.innerHTML = PRODUCTS.map((p, i) => {
+    const { status, reason } = getCPLStatus(i);
+    const cls = status === 'alert' ? 'status-alert' : status === 'watch' ? 'status-watch' : 'status-ok';
+    const label = status === 'alert' ? '⚠ Action Needed' : status === 'watch' ? '◉ Watch' : '✓ Healthy';
+    return `<div class="intel-product-pill">
+      <p class="intel-pill-name"><span style="width:6px;height:6px;border-radius:50%;background:${p.color};display:inline-block;margin-right:5px"></span>${p.name}</p>
+      <p class="intel-pill-status ${cls}">${label}</p>
+      <p class="intel-pill-cpl">${reason}</p>
+    </div>`;
+  }).join('');
+  const ts = document.getElementById('intel-last-checked');
+  if (ts) ts.textContent = 'Checked ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+// ---------- CHANGE LOG HELPERS ----------
+function getLogsForProduct(pName) { return changeLogs[pName] || []; }
+
+function getUniqueDates(pName) {
+  const logs = getLogsForProduct(pName);
+  return [...new Set(logs.map(l => l.date))].sort((a,b) => b.localeCompare(a));
+}
+
+function renderChangeLog(pName, selectedDate) {
+  const container = document.getElementById('changelog-' + pName);
+  if (!container) return;
+  const dates = getUniqueDates(pName);
+  const picked = selectedDate || dates[0] || new Date().toISOString().slice(0,10);
+  const logs = getLogsForProduct(pName).filter(l => l.date === picked);
+  const typeColors = { Budget:'budget-change', Audience:'audience-change', Creative:'creative-change', 'Bid Strategy':'bid-change', Placement:'placement-change', Other:'other-change' };
+
+  const dateOptions = dates.map(d => `<option value="${d}" ${d===picked?'selected':''}>${d}</option>`).join('');
+  const todayOpt = !dates.includes(new Date().toISOString().slice(0,10))
+    ? `<option value="${new Date().toISOString().slice(0,10)}">+ Today</option>` : '';
+
+  const entriesHTML = logs.length
+    ? logs.map((l, i) => `
+      <div class="log-entry ${typeColors[l.type]||'other-change'}">
+        <div class="log-entry-top">
+          <span class="log-entry-type">${l.type}</span>
+          <button class="log-entry-del" onclick="deleteLog('${pName}','${l.id}')">✕</button>
+        </div>
+        <div class="log-entry-text">${l.change}</div>
+        ${l.reason ? `<div class="log-entry-reason">Reason: ${l.reason}</div>` : ''}
+      </div>`).join('')
+    : `<div style="font-size:12px;color:#aaa;padding:6px 0">No changes logged for this date.</div>`;
+
+  container.innerHTML = `
+    <div class="changelog-bar">
+      <select class="changelog-select" onchange="renderChangeLog('${pName}', this.value)">
+        ${todayOpt}${dateOptions}
+        ${!dateOptions ? `<option value="${new Date().toISOString().slice(0,10)}">Today</option>` : ''}
+      </select>
+      <span style="font-size:11px;color:#aaa">${logs.length} entr${logs.length===1?'y':'ies'}</span>
+    </div>
+    <div class="changelog-entries">${entriesHTML}</div>
+    <button class="log-add-btn" onclick="toggleLogForm('${pName}','${picked}')">+ Log a change for ${picked}</button>
+    <div class="log-add-form" id="logform-${pName}">
+      <div class="log-form-row">
+        <div class="setup-field">
+          <span class="setup-label">Change type</span>
+          <select class="setup-select" id="logtype-${pName}">
+            <option>Budget</option><option>Audience</option><option>Creative</option>
+            <option>Bid Strategy</option><option>Placement</option><option>Other</option>
+          </select>
+        </div>
+        <div class="setup-field">
+          <span class="setup-label">Date</span>
+          <input type="date" class="setup-input" id="logdate-${pName}" value="${picked}" />
+        </div>
+      </div>
+      <div class="setup-field" style="margin-bottom:8px">
+        <span class="setup-label">What changed</span>
+        <input type="text" class="setup-input" id="logchange-${pName}" placeholder="e.g. Budget increased from ৳1,200 to ৳1,800" />
+      </div>
+      <div class="setup-field" style="margin-bottom:10px">
+        <span class="setup-label">Reason (optional)</span>
+        <input type="text" class="setup-input" id="logreason-${pName}" placeholder="e.g. CPL was below target, scaling up" />
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="font-size:12px;padding:7px 16px" onclick="saveLog('${pName}','${picked}')">Save entry</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="toggleLogForm('${pName}','${picked}')">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function toggleLogForm(pName, date) {
+  const f = document.getElementById('logform-' + pName);
+  if (!f) return;
+  f.classList.toggle('open');
+  const di = document.getElementById('logdate-' + pName);
+  if (di) di.value = date;
+}
+
+function saveLog(pName, defaultDate) {
+  const type   = document.getElementById('logtype-'   + pName)?.value || 'Other';
+  const date   = document.getElementById('logdate-'   + pName)?.value || defaultDate;
+  const change = document.getElementById('logchange-' + pName)?.value.trim();
+  const reason = document.getElementById('logreason-' + pName)?.value.trim();
+  if (!change) { alert('Please describe what changed.'); return; }
+  if (!changeLogs[pName]) changeLogs[pName] = [];
+  changeLogs[pName].push({ id: Date.now().toString(), date, type, change, reason });
+  saveLogs();
+  renderChangeLog(pName, date);
+  showToast('Change logged!');
+}
+
+function deleteLog(pName, id) {
+  if (!changeLogs[pName]) return;
+  changeLogs[pName] = changeLogs[pName].filter(l => l.id !== id);
+  saveLogs();
+  const dates = getUniqueDates(pName);
+  renderChangeLog(pName, dates[0]);
+}
+
+// ---------- SETUP SAVE ----------
+function saveSetup(pName) {
+  const g = id => document.getElementById(id)?.value || '';
+  campaignSetups[pName] = {
+    objective:    g('obj-'+pName),
+    status:       g('status-'+pName),
+    budget:       g('budget-'+pName),
+    bidStrategy:  g('bid-'+pName),
+    bidAmount:    g('bidamt-'+pName),
+    audience:     g('aud-'+pName),
+    detailedTargeting: g('dettarget-'+pName),
+    placement:    g('place-'+pName),
+    creative:     g('creative-'+pName),
+    creativeCount:g('crcount-'+pName),
+    notes:        g('notes-'+pName),
+  };
+  saveSetups();
+  showToast(pName + ' setup saved!');
+  buildStratGrid(); // rebuild to sync status chip
+}
+
+// ---------- AI ANALYSIS ----------
+async function analyseProduct(pName, auto=false) {
+  const btn = document.getElementById('analyse-btn-' + pName);
+  const panel = document.getElementById('insight-panel-' + pName);
+  const content = document.getElementById('insight-content-' + pName);
+  if (!panel || !content) return;
+
+  const pi = PRODUCTS.findIndex(p => p.name === pName);
+  const p  = PRODUCTS[pi];
+  const { status } = getCPLStatus(pi);
+
+  if (!auto && status === 'ok') {
+    // Still allow manual even if ok — just no auto trigger
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Analysing…'; }
+  panel.classList.add('has-alert');
+  content.innerHTML = `<span class="loading-dots"><span></span><span></span><span></span></span> AI is analysing ${pName}…`;
+
+  // Build rich context
+  const recent7 = history.slice(-7);
+  const dailyData = recent7.map(h => {
+    const d = h.data[pi];
+    return `  ${h.date}: Spent=৳${d.spent}, Leads=${d.leads}, CPL=৳${cpl(d.spent,d.leads)}`;
+  }).join('\n');
+
+  const setup = campaignSetups[pName] || {};
+  const setupStr = `
+    Objective: ${setup.objective||'Not set'}
+    Campaign Status: ${setup.status||'Not set'}
+    Daily Budget: ৳${setup.budget||'Not set'}
+    Bid Strategy: ${setup.bidStrategy||'Not set'} ${setup.bidAmount?'at ৳'+setup.bidAmount:''}
+    Audience Type: ${setup.audience||'Not set'}
+  Detailed Targeting: ${setup.detailedTargeting||'Not set'}
+    Placements: ${setup.placement||'Not set'}
+    Creative Type: ${setup.creative||'Not set'} (${setup.creativeCount||'?'} active ads)
+    Additional Notes: ${setup.notes||'None'}`;
+
+  const recentLogs = (changeLogs[pName]||[]).slice(-15).map(l =>
+    `  [${l.date}] ${l.type}: ${l.change}${l.reason?' — Reason: '+l.reason:''}`).join('\n') || '  No changes logged.';
+
+  const allCPLs = recent7.map(h => cpl(h.data[pi].spent, h.data[pi].leads)).filter(c=>c>0);
+  const avgCPL  = allCPLs.length ? Math.round(allCPLs.reduce((a,b)=>a+b,0)/allCPLs.length) : 0;
+  const cplTrend = allCPLs.length >= 2
+    ? (allCPLs[allCPLs.length-1] > allCPLs[0] ? 'RISING' : allCPLs[allCPLs.length-1] < allCPLs[0] ? 'FALLING' : 'STABLE')
+    : 'INSUFFICIENT DATA';
+
+  const productContext = getProductKnowledge(pName);
+
+  const prompt = `You are a senior performance marketing strategist specialising in Meta (Facebook/Instagram) advertising for education brands in South Asia.
+
+PRODUCT: ${pName}
+TARGET CPL: ৳${p.targetCpl}
+CPL TREND (last 7 days): ${cplTrend}
+AVERAGE CPL (last 7 days): ৳${avgCPL}
+
+LAST 7 DAYS PERFORMANCE DATA:
+${dailyData}
+
+CURRENT META CAMPAIGN SETUP:
+${setupStr}${productContext}
+
+RECENT CHANGES LOG (last 15 entries):
+${recentLogs}
+
+TASK:
+${auto
+  ? `The system has AUTO-FLAGGED this campaign because CPL has risen above target. Provide an urgent diagnostic.`
+  : `The media buyer has manually requested a full campaign analysis.`}
+
+Please provide your analysis in this exact structure:
+
+📊 PERFORMANCE SUMMARY
+A 2-3 sentence summary of what the data shows.
+
+🔍 PROBABLE CAUSES (ranked by likelihood)
+List 3-5 causes. For each, state:
+— [CAUSE NAME] (General/Meta-Specific/Both)
+  Explanation of why this is likely given the data and setup.
+
+⚡ RECOMMENDED ACTIONS
+List 3-5 specific, actionable steps the media buyer should take immediately. Be specific — mention exact Meta settings, audience strategies, bid adjustments, creative recommendations.
+
+📅 MONITORING CHECKPOINTS
+What to watch over the next 2-3 days to confirm if the actions are working.
+
+Keep your tone direct and tactical. No fluff. The media buyer is experienced.`;
+
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error('No Groq API key set. Please add your free key in the banner above.');
+
+    // Retry up to 3 times with backoff for rate limit errors
+    let data, lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        const wait = attempt * 10000;
+        content.innerHTML = `<span class="loading-dots"><span></span><span></span><span></span></span> Rate limited — retrying in ${wait/1000}s…`;
+        await new Promise(r => setTimeout(r, wait));
+      }
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          max_tokens: 1500,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      data = await resp.json();
+      if (data.error?.code === 'rate_limit_exceeded') { lastErr = data.error; continue; }
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      break;
+    }
+    if (!data || data.error?.code === 'rate_limit_exceeded') {
+      throw new Error('Rate limit hit. Wait a moment and click Analyse manually, or analyse one product at a time.');
+    }
+    const text = data.choices?.[0]?.message?.content || 'No response received.';
+    aiInsights[pName] = { text, ts: new Date().toISOString(), auto };
+    saveInsights();
+    content.className = 'insight-content';
+    content.textContent = text;
+    const tsEl = document.getElementById('insight-ts-' + pName);
+    if (tsEl) tsEl.textContent = 'Last analysed: ' + new Date().toLocaleString();
+    if (!panel.classList.contains('has-alert')) panel.classList.add('has-alert');
+  } catch (err) {
+    content.className = 'insight-content';
+    content.textContent = '⚠ Could not reach the AI. Check your Groq API key and try again.\n\n' + err.message;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Analyse'; }
+}
+
+function clearInsight(pName) {
+  delete aiInsights[pName];
+  saveInsights();
+  const panel = document.getElementById('insight-panel-' + pName);
+  const content = document.getElementById('insight-content-' + pName);
+  if (panel) panel.classList.remove('has-alert');
+  if (content) { content.className = 'insight-content empty'; content.textContent = 'No analysis yet. Click Analyse to generate AI insights.'; }
+  const tsEl = document.getElementById('insight-ts-' + pName);
+  if (tsEl) tsEl.textContent = '';
+}
+
+// ---------- AUTO-TRIGGER ----------
+function runAutoFlags() {
+  let slot = 0;
+  PRODUCTS.forEach((p, i) => {
+    const { status } = getCPLStatus(i);
+    if (status === 'alert') {
+      const existing = aiInsights[p.name];
+      const today = new Date().toISOString().slice(0,10);
+      if (!existing || !existing.ts.startsWith(today)) {
+        // Stagger by 6s each to stay within free tier (15 req/min limit)
+        setTimeout(() => analyseProduct(p.name, true), slot * 6000);
+        slot++;
+      }
+    }
+  });
+}
+
+// ---------- BUILD STRATEGY GRID ----------
+function buildStratGrid() {
+  buildIntelBanner();
+  const grid = document.getElementById('stratGrid');
+  if (!grid) return;
+  grid.innerHTML = PRODUCTS.map((p, i) => {
+    const setup   = campaignSetups[p.name] || {};
+    const insight = aiInsights[p.name] || null;
+    const { status } = getCPLStatus(i);
+    const chipCls = status === 'alert' ? 'chip-alert' : status === 'watch' ? 'chip-watch' : 'chip-ok';
+    const chipLbl = status === 'alert' ? '⚠ Action Needed' : status === 'watch' ? '◉ Watch' : '✓ Healthy';
+    const insightText = insight?.text || '';
+    const insightTs   = insight?.ts ? 'Last analysed: ' + new Date(insight.ts).toLocaleString() : '';
+    const autoFlag = status === 'alert' && insight?.auto
+      ? `<div class="insight-auto-flag"><span class="insight-flag-icon">🚨</span><span class="insight-flag-text">Auto-flagged: CPL exceeded target. AI analysis generated automatically.</span></div>`
+      : '';
+
+    return `
+    <div class="strat-card ${status==='alert'?'flagged':''}">
+      <div class="strat-card-hdr">
+        <div class="strat-card-title">
+          <span class="strat-dot" style="background:${p.color}"></span>
+          <span class="strat-name">${p.name}</span>
+        </div>
+        <span class="strat-status-chip ${chipCls}">${chipLbl}</span>
+      </div>
+      <div class="strat-body">
+
+        <p class="strat-section-title">Campaign Setup</p>
+        <div class="setup-grid">
+          <div class="setup-field">
+            <span class="setup-label">Objective</span>
+            <select class="setup-select" id="obj-${p.name}">
+              ${['Lead Generation','Conversions','Traffic','Awareness','Engagement','Messages'].map(o=>`<option ${setup.objective===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Campaign Status</span>
+            <select class="setup-select" id="status-${p.name}">
+              ${['Active','Paused','Learning','Learning Limited','Scheduled'].map(o=>`<option ${setup.status===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Daily Budget (৳)</span>
+            <input class="setup-input" type="number" id="budget-${p.name}" placeholder="e.g. 1500" value="${setup.budget||''}" />
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Bid Strategy</span>
+            <select class="setup-select" id="bid-${p.name}">
+              ${['Lowest Cost','Cost Cap','Bid Cap','Target Cost','Highest Value'].map(o=>`<option ${setup.bidStrategy===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Bid / Cap Amount (৳)</span>
+            <input class="setup-input" type="number" id="bidamt-${p.name}" placeholder="Leave blank if Lowest Cost" value="${setup.bidAmount||''}" />
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Audience Type</span>
+            <select class="setup-select" id="aud-${p.name}">
+              ${['Broad','Interest-based','Lookalike','Retargeting','Custom Audience','Mixed'].map(o=>`<option ${setup.audience===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field setup-full">
+            <span class="setup-label">Detailed Targeting</span>
+            <textarea class="setup-input" id="dettarget-${p.name}" rows="3" placeholder="e.g. Interests: IELTS exam, Study abroad | Age: 18-35 | Behaviours: Engaged shoppers" style="resize:vertical;font-size:12px">${setup.detailedTargeting||''}</textarea>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Placements</span>
+            <select class="setup-select" id="place-${p.name}">
+              ${['Advantage+ (Auto)','Feed Only','Reels Only','Feed + Reels','Feed + Stories','Manual Selection'].map(o=>`<option ${setup.placement===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Creative Type</span>
+            <select class="setup-select" id="creative-${p.name}">
+              ${['Single Image','Video','Carousel','Collection','UGC','Dynamic Creative'].map(o=>`<option ${setup.creative===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="setup-field">
+            <span class="setup-label">Active Ads Count</span>
+            <input class="setup-input" type="number" id="crcount-${p.name}" placeholder="e.g. 3" value="${setup.creativeCount||''}" />
+          </div>
+          <div class="setup-field setup-full">
+            <span class="setup-label">Notes / Context</span>
+            <input class="setup-input" type="text" id="notes-${p.name}" placeholder="Any extra context for the AI…" value="${setup.notes||''}" />
+          </div>
+        </div>
+        <button class="btn btn-primary" style="font-size:12px;padding:7px 16px;margin-bottom:18px" onclick="saveSetup('${p.name}')">Save Setup</button>
+
+        <p class="strat-section-title">Change Log</p>
+        <div id="changelog-${p.name}"></div>
+
+        <div class="insight-panel ${insightText?'has-alert':''}" id="insight-panel-${p.name}">
+          <div class="insight-hdr">
+            <span class="insight-title"><span class="ai-dot"></span>Groq AI Insight</span>
+            <div class="insight-actions">
+              <button class="insight-btn insight-btn-analyse" id="analyse-btn-${p.name}" onclick="analyseProduct('${p.name}')">Analyse</button>
+              <button class="insight-btn insight-btn-clear" onclick="clearInsight('${p.name}')">Clear</button>
+            </div>
+          </div>
+          ${autoFlag}
+          <div class="insight-content ${insightText?'':'empty'}" id="insight-content-${p.name}">${insightText||'No analysis yet. Fill in the campaign setup above and click Analyse.'}</div>
+          <div class="insight-ts" id="insight-ts-${p.name}">${insightTs}</div>
+        </div>
+
+      </div>
+    </div>`;
+  }).join('');
+
+  // Render change logs for each product
+  PRODUCTS.forEach(p => renderChangeLog(p.name));
+}
+
+
+/* ── INIT ── */
+const dateEl = document.getElementById('reportDate');
+dateEl.value = new Date().toISOString().slice(0, 10);
+dateEl.addEventListener('change', render);
+checkApiKeyBanner();
+
+// Wait for Firebase to be ready, then load data and start listeners
+function initWithFirebase() {
+  loadFromFirebase().then(() => {
+    startListeners();
+    setTimeout(runAutoFlags, 1500);
+  });
+}
+
+if (window.firebaseReady) {
+  initWithFirebase();
+} else {
+  document.addEventListener('firebaseReady', initWithFirebase);
+  setTimeout(() => { if (!window.firebaseReady) { render(); showToast('⚠ Firebase not connected'); } }, 3000);
+}
+
+// ── Expose functions to global scope (needed for inline onclick handlers in module scripts) ──
+Object.assign(window, {
+  saveDay, saveMTDConfig, showMTDForm, closeMTDForm, previewMTD, recalc,
+  switchTab, saveApiKey, saveKB, saveKBForProduct, clearKB, buildKBGrid,
+  saveSetup, saveLog, deleteLog, toggleLogForm, renderChangeLog,
+  analyseProduct, clearInsight, runAutoFlags, render
+});
+</script>
+</body>
+</html>
