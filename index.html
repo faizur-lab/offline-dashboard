@@ -417,6 +417,9 @@ document.dispatchEvent(new Event('firebaseReady'));
       </div>
       <button onclick="applyTrendFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 16px;border-radius:6px;background:var(--black);color:#fff;border:none;cursor:pointer">Apply</button>
       <button onclick="resetTrendFilters()" style="font-family:inherit;font-size:12px;padding:6px 12px;border-radius:6px;background:#f0f0f0;color:#555;border:1px solid var(--border);cursor:pointer">Reset</button>
+      <button onclick="askTrendAI()" id="trendAIBtn" style="margin-left:auto;font-family:inherit;font-size:12px;font-weight:700;padding:6px 16px;border-radius:6px;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;gap:7px">
+        <span style="font-size:14px">✦</span> Ask AI
+      </button>
     </div>
 
     <div class="section-wrap">
@@ -450,10 +453,40 @@ document.dispatchEvent(new Event('firebaseReady'));
         </div>
       </div>
     </div>
+    <!-- TREND AI PANEL -->
+    <div id="trendAIPanel" style="display:none;margin-top:0.5rem">
+      <div style="background:#0d0d1a;border-radius:14px;border:1px solid #2a2a4a;overflow:hidden">
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid #2a2a4a;display:flex;align-items:center;gap:10px">
+          <span style="font-size:15px">✦</span>
+          <span style="font-size:13px;font-weight:700;color:#fff;letter-spacing:0.03em">AI Trend Analysis</span>
+          <span id="trendAIDateRange" style="font-size:11px;color:#666;margin-left:4px"></span>
+          <button onclick="closeTrendAI()" style="margin-left:auto;background:none;border:none;color:#555;font-size:18px;cursor:pointer;line-height:1;padding:0">×</button>
+        </div>
+        <!-- Question chips -->
+        <div id="trendAIChips" style="padding:14px 20px 0;display:flex;gap:8px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.07em;align-self:center">Ask about:</span>
+          <button onclick="runTrendQuery(this)" data-q="overall" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">Overall summary</button>
+          <button onclick="runTrendQuery(this)" data-q="cpl" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">CPL patterns</button>
+          <button onclick="runTrendQuery(this)" data-q="leads" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">Lead volume trends</button>
+          <button onclick="runTrendQuery(this)" data-q="best" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">Best & worst days</button>
+          <button onclick="runTrendQuery(this)" data-q="product" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">Product comparison</button>
+          <button onclick="runTrendQuery(this)" data-q="recommendations" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 13px;border-radius:20px;border:1px solid #2a2a4a;background:#1a1a2e;color:#aaa;cursor:pointer">Recommendations</button>
+        </div>
+        <!-- Custom question input -->
+        <div style="padding:12px 20px;display:flex;gap:8px">
+          <input id="trendAICustomQ" type="text" placeholder="Or ask your own question about the trends…" style="font-family:inherit;font-size:12px;padding:7px 12px;border-radius:7px;border:1px solid #2a2a4a;background:#1a1a2e;color:#fff;flex:1" onkeydown="if(event.key==='Enter') runTrendCustomQuery()" />
+          <button onclick="runTrendCustomQuery()" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;border-radius:7px;background:#2a2a6a;color:#fff;border:none;cursor:pointer">Ask</button>
+        </div>
+        <!-- Response area -->
+        <div id="trendAIResponse" style="padding:0 20px 20px;display:none">
+          <div style="border-top:1px solid #2a2a4a;padding-top:16px">
+            <div id="trendAIResponseText" style="font-size:13px;color:#ccc;line-height:1.8;white-space:pre-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-
-
-  <!-- STRATEGY & AI VIEW -->
   <div id="view-strategy" class="view">
 
     <!-- INTEL BANNER -->
@@ -938,7 +971,140 @@ function closeMTDForm() {
   const link = document.getElementById('editMtdLink'); if (link) link.style.display = '';
 }
 
-/* ── TREND CHARTS ── */
+/* ── TREND AI ── */
+function askTrendAI() {
+  const panel = document.getElementById('trendAIPanel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Update date range label
+  const f = document.getElementById('trendFrom')?.value;
+  const t = document.getElementById('trendTo')?.value;
+  const label = (f && t) ? `${f} → ${t}` : (f ? `From ${f}` : 'All data');
+  document.getElementById('trendAIDateRange').textContent = `(${label})`;
+  // Reset response
+  document.getElementById('trendAIResponse').style.display = 'none';
+  document.getElementById('trendAIResponseText').textContent = '';
+  // Reset chip highlights
+  document.querySelectorAll('#trendAIChips button').forEach(b => {
+    b.style.background = '#1a1a2e'; b.style.color = '#aaa'; b.style.borderColor = '#2a2a4a';
+  });
+}
+
+function closeTrendAI() {
+  document.getElementById('trendAIPanel').style.display = 'none';
+}
+
+function buildTrendDataSummary() {
+  const fromVal = document.getElementById('trendFrom')?.value;
+  const toVal   = document.getElementById('trendTo')?.value;
+  let filtered  = history.filter(h => h.data.some(d => d.leads > 0 || d.spent > 0));
+  if (fromVal) filtered = filtered.filter(h => h.date >= fromVal);
+  if (toVal)   filtered = filtered.filter(h => h.date <= toVal);
+  if (!filtered.length) return null;
+
+  const lines = filtered.map(h => {
+    const row = PRODUCTS.map((p, i) => {
+      const d = h.data[i];
+      return `${p.name}: leads=${d.leads}, spend=৳${d.spent}, CPL=৳${cpl(d.spent, d.leads)}`;
+    }).join(' | ');
+    return `${h.date}: ${row}`;
+  });
+
+  const totals = PRODUCTS.map((p, i) => {
+    const totL = filtered.reduce((a, h) => a + h.data[i].leads, 0);
+    const totS = filtered.reduce((a, h) => a + h.data[i].spent, 0);
+    return `${p.name}: total leads=${totL}, total spend=৳${totS}, avg CPL=৳${cpl(totS, totL)}, target CPL=৳${p.targetCpl}`;
+  });
+
+  return { lines, totals, days: filtered.length, from: filtered[0].date, to: filtered[filtered.length - 1].date };
+}
+
+function getTrendPrompt(queryType, customQ) {
+  const data = buildTrendDataSummary();
+  if (!data) return null;
+
+  const dataBlock = `
+DAILY DATA (${data.days} days, ${data.from} to ${data.to}):
+${data.lines.join('\n')}
+
+TOTALS & AVERAGES:
+${data.totals.join('\n')}
+`;
+
+  const questionMap = {
+    overall:         'Give me a concise overall summary of the campaign trends in this period. What is the general direction — improving, declining, or mixed? Highlight the most important takeaways.',
+    cpl:             'Analyse the CPL (Cost Per Lead) patterns across all products. Which products are consistently above or below their targets? Are there any notable spikes or drops? What might explain them?',
+    leads:           'Analyse the lead volume trends across all products. Which products are generating the most leads? Are volumes growing or declining? Identify any patterns by day of week or time period.',
+    best:            'Identify the best and worst performing days in this period. What made the best days stand out? What went wrong on the worst days? Any patterns worth noting?',
+    product:         'Compare the performance of all products against each other. Rank them by efficiency (CPL vs target) and lead volume. Which product deserves more budget? Which needs attention?',
+    recommendations: 'Based on the trend data, give me 3-5 specific, actionable recommendations for improving campaign performance. Be concrete — which products, what changes, why.',
+  };
+
+  const question = customQ || questionMap[queryType] || questionMap.overall;
+
+  return `You are a performance marketing analyst reviewing campaign data for an education business in Bangladesh. Analyse the following data and answer the question.
+
+${dataBlock}
+
+QUESTION: ${question}
+
+Be concise, specific, and data-driven. Use numbers from the data to support your points. Format your response clearly with short paragraphs or bullet points where appropriate. Do not repeat the raw data back — interpret it.`;
+}
+
+async function runTrendQuery(btn) {
+  // Highlight selected chip
+  document.querySelectorAll('#trendAIChips button').forEach(b => {
+    b.style.background = '#1a1a2e'; b.style.color = '#aaa'; b.style.borderColor = '#2a2a4a';
+  });
+  btn.style.background = '#2a2a6a'; btn.style.color = '#fff'; btn.style.borderColor = '#4a4a9a';
+
+  await executeTrendAIQuery(btn.dataset.q, null);
+}
+
+async function runTrendCustomQuery() {
+  const q = document.getElementById('trendAICustomQ').value.trim();
+  if (!q) return;
+  document.querySelectorAll('#trendAIChips button').forEach(b => {
+    b.style.background = '#1a1a2e'; b.style.color = '#aaa'; b.style.borderColor = '#2a2a4a';
+  });
+  await executeTrendAIQuery(null, q);
+}
+
+async function executeTrendAIQuery(queryType, customQ) {
+  const apiKey = getApiKey();
+  if (!apiKey) { showToast('Add your Groq API key first'); return; }
+
+  const prompt = getTrendPrompt(queryType, customQ);
+  if (!prompt) { showToast('No trend data available for the selected range'); return; }
+
+  const respArea = document.getElementById('trendAIResponse');
+  const respText = document.getElementById('trendAIResponseText');
+  const btn      = document.getElementById('trendAIBtn');
+
+  respArea.style.display = 'block';
+  respText.textContent   = '⏳ Analysing trends…';
+  btn.disabled = true; btn.style.opacity = '0.6';
+
+  try {
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    respText.textContent = data.choices?.[0]?.message?.content || 'No response received.';
+  } catch (err) {
+    respText.textContent = '⚠ Could not reach AI: ' + err.message;
+  }
+
+  btn.disabled = false; btn.style.opacity = '1';
+  respArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 let trendChartInst, leadsChartInst;
 function buildTrend() {
   // Only use days that have actual data (skip empty/today-not-yet-entered)
@@ -1813,7 +1979,8 @@ Object.assign(window, {
   saveSetup, saveLog, deleteLog, toggleLogForm, renderChangeLog,
   analyseProduct, clearInsight, runAutoFlags, render,
   resetToToday, applyTrendFilters, resetTrendFilters, toggleTrendProduct,
-  openAddProductModal, closeAddProductModal, saveNewProduct, deleteExtraProduct
+  openAddProductModal, closeAddProductModal, saveNewProduct, deleteExtraProduct,
+  askTrendAI, closeTrendAI, runTrendQuery, runTrendCustomQuery
 });
 </script>
 </body>
